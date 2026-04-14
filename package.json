@@ -1,0 +1,26 @@
+{
+  "name": "flowpilot",
+  "version": "0.1.0",
+  "description": "A pluggable frontend guidance SDK for step-by-step user training.",
+  "type": "module",
+  "main": "dist/flowpilot.umd.js",
+  "module": "dist/flowpilot.esm.js",
+  "unpkg": "dist/flowpilot.umd.js",
+  "jsdelivr": "dist/flowpilot.umd.js",
+  "scripts": {
+    "build": "vite build"
+  },
+  "keywords": [
+    "guide",
+    "onboarding",
+    "tutorial",
+    "frontend",
+    "plugin",
+    "sdk"
+  ],
+  "author": "FlowPilot Team",
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^5.2.0"
+  }
+}
