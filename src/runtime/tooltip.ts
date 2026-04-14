@@ -53,5 +53,9 @@ export const createTooltip = (root: ShadowRoot) => {
     }
   };
 
-  return { update };
+  const destroy = () => {
+    tooltip.remove();
+  };
+
+  return { update, destroy };
 };

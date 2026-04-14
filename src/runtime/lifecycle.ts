@@ -1,0 +1,109 @@
+﻿import type { MappingRegistry, Step } from "../types";
+import { resolveElement, resolvePages } from "../mapping/resolver";
+import { pageMatches, stateMatches } from "./stepEngine";
+import { GuideRuntime } from "./ui";
+
+export type ValidationResult =
+  | {
+      valid: true;
+      element: Element;
+      selectors: string[];
+    }
+  | {
+      valid: false;
+      reason: "page-mismatch" | "state-mismatch" | "element-missing";
+      selectors?: string[];
+    };
+
+type ValidationContext = {
+  currentPage?: string;
+  state?: Record<string, any>;
+};
+
+type EnterOptions = {
+  bindClick: boolean;
+  showConfirm: boolean;
+  onAdvance?: () => void;
+};
+
+export class StepLifecycle {
+  private ui: GuideRuntime;
+  private mapping?: MappingRegistry;
+  private clickTarget: Element | null = null;
+  private clickHandler: ((event: Event) => void) | null = null;
+
+  constructor(ui: GuideRuntime, mapping?: MappingRegistry) {
+    this.ui = ui;
+    this.mapping = mapping;
+  }
+
+  validate(step: Step, context: ValidationContext): ValidationResult {
+    if (!pageMatches(step, context.currentPage)) {
+      return { valid: false, reason: "page-mismatch" };
+    }
+    if (!stateMatches(step.state, context.state)) {
+      return { valid: false, reason: "state-mismatch" };
+    }
+    const mappingPages = resolvePages(step.highlight, this.mapping);
+    if (
+      mappingPages.length &&
+      context.currentPage &&
+      !mappingPages.includes(context.currentPage)
+    ) {
+      return { valid: false, reason: "page-mismatch" };
+    }
+    const { element, selectors } = resolveElement(
+      step.highlight,
+      this.mapping,
+      context.currentPage
+    );
+    if (!element) {
+      return { valid: false, reason: "element-missing", selectors };
+    }
+    return { valid: true, element, selectors };
+  }
+
+  enter(step: Step, element: Element | null, options: EnterOptions) {
+    this.ui.render(element, {
+      message: step.action || "",
+      reason: step.desc || "",
+      showNext: options.showConfirm,
+      onNext: options.showConfirm ? options.onAdvance : undefined,
+    });
+
+    if (!element || !options.bindClick) {
+      this.detachListener();
+      return;
+    }
+
+    if (this.clickTarget === element && this.clickHandler) {
+      return;
+    }
+
+    this.detachListener();
+    const handler = () => {
+      options.onAdvance?.();
+    };
+    element.addEventListener("click", handler, { once: true });
+    this.clickTarget = element;
+    this.clickHandler = handler;
+  }
+
+  exit() {
+    this.detachListener();
+    this.ui.clear();
+  }
+
+  destroy() {
+    this.exit();
+    this.ui.destroy();
+  }
+
+  private detachListener() {
+    if (this.clickTarget && this.clickHandler) {
+      this.clickTarget.removeEventListener("click", this.clickHandler);
+    }
+    this.clickTarget = null;
+    this.clickHandler = null;
+  }
+}

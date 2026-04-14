@@ -62,5 +62,10 @@ export const createHighlight = (root: ShadowRoot) => {
     maskRight.style.height = `${middleHeight}px`;
   };
 
-  return { update };
+  const destroy = () => {
+    highlight.remove();
+    [maskTop, maskLeft, maskRight, maskBottom].forEach((el) => el.remove());
+  };
+
+  return { update, destroy };
 };

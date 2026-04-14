@@ -11,6 +11,11 @@ export type Step = {
   page?: string;
   state?: Record<string, any>;
   form?: FormField[];
+  type?: "click" | "form" | "view" | "route";
+  autoNext?: boolean;
+  requireConfirm?: boolean;
+  waitForStable?: boolean;
+  status?: "pending" | "active" | "completed";
 };
 
 export type Workflow = {

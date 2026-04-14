@@ -8,7 +8,10 @@
   "unpkg": "dist/flowpilot.umd.js",
   "jsdelivr": "dist/flowpilot.umd.js",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "build:min": "cross-env MINIFY=true vite build",
+    "build:all": "node scripts/build-all.mjs",
+    "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "keywords": [
     "guide",
@@ -22,6 +25,8 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "cross-env": "^10.1.0",
+    "terser": "^5.46.1",
     "vite": "^5.2.0"
   }
 }
