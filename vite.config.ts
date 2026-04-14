@@ -9,7 +9,7 @@ export default defineConfig({
       fileName: (format) =>
         format === "es" ? "flowpilot.esm.js" : "flowpilot.umd.js",
     },
-    outDir: "dist",
+    outDir: process.env.FLOWPILOT_OUT_DIR || "dist",
     emptyOutDir: true,
   },
 });

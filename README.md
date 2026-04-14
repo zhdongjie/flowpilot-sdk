@@ -33,6 +33,49 @@ FlowPilot.destroy()
 
 ---
 
+## Local Build
+
+```bash
+npm install
+npm run build
+```
+
+Custom output directory (CLI):
+
+```bash
+npm run build -- --outDir E:\release\flowpilot-sdk
+```
+
+Custom output directory (CLI, macOS/Linux):
+
+```bash
+npm run build -- --outDir /tmp/flowpilot-sdk
+```
+
+Custom output directory (PowerShell, Windows):
+
+```powershell
+$env:FLOWPILOT_OUT_DIR = "E:\release\flowpilot-sdk"
+npm run build
+```
+
+Custom output directory (CMD, Windows):
+
+```bat
+set FLOWPILOT_OUT_DIR=E:\release\flowpilot-sdk
+npm run build
+```
+
+Custom output directory (macOS/Linux):
+
+```bash
+FLOWPILOT_OUT_DIR=/tmp/flowpilot-sdk npm run build
+```
+
+See `docs/BUILD.md` for full options.
+
+---
+
 ## Quick Start
 
 ```html

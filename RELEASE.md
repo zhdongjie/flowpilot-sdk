@@ -18,6 +18,38 @@ npm install
 npm run build
 ```
 
+支持指定输出目录：
+
+```bash
+npm run build -- --outDir E:\release\flowpilot-sdk
+```
+
+macOS/Linux:
+
+```bash
+npm run build -- --outDir /tmp/flowpilot-sdk
+```
+
+PowerShell (Windows):
+
+```powershell
+$env:FLOWPILOT_OUT_DIR = "E:\release\flowpilot-sdk"
+npm run build
+```
+
+CMD (Windows):
+
+```bat
+set FLOWPILOT_OUT_DIR=E:\release\flowpilot-sdk
+npm run build
+```
+
+macOS/Linux:
+
+```bash
+FLOWPILOT_OUT_DIR=/tmp/flowpilot-sdk npm run build
+```
+
 2. 打开 Demo 验证
 ```bash
 cd E:\Project\Python\flowpilot-sdk
