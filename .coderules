@@ -1,0 +1,137 @@
+# FlowPilot v1 - Codex Rules (STRICT)
+
+## 1. ARCHITECTURE RULE
+
+Only ONE system is allowed to control flow:
+
+→ runtime/engine.ts
+
+No other file is allowed to decide:
+- next step
+- flow transition
+- workflow changes
+
+---
+
+## 2. STEP RULE
+
+Step is PURE CONFIG ONLY.
+
+Allowed fields:
+- id
+- type
+- highlight
+- desc
+
+FORBIDDEN:
+- state
+- status
+- behavior
+- logic
+- runtime fields
+
+---
+
+## 3. BEHAVIOR RULE
+
+behavior/listener.ts is EVENT ONLY.
+
+Allowed:
+- listen DOM events
+- normalize events
+- emit to EventBus
+
+FORBIDDEN:
+- deciding next step
+- modifying state
+- triggering transitions
+
+---
+
+## 4. ADAPTER RULE
+
+adapter is READ + RENDER ONLY.
+
+Allowed:
+- DOM query
+- highlight UI
+- render overlay
+
+FORBIDDEN:
+- click()
+- fill()
+- submit()
+- triggering user actions
+
+---
+
+## 5. RUNTIME RULE
+
+runtime/engine.ts is the ONLY decision maker.
+
+Allowed:
+- step transition
+- event handling
+- recovery triggering
+
+FORBIDDEN:
+- DOM operations
+- UI rendering
+- business logic
+
+---
+
+## 6. RECOVERY RULE
+
+Recovery is fallback only.
+
+Allowed:
+- detect mismatch
+- fix state
+- reset step
+- reconcile step
+
+---
+
+## 7. ANTI-AGENT RULE (CRITICAL)
+
+This project is NOT:
+- an AI agent
+- an automation system
+- a RPA tool
+- a browser controller
+
+DO NOT introduce:
+- reasoning loops
+- autonomous actions
+- self-deciding flows
+
+---
+
+## 8. FLOW RULE
+
+All execution must follow:
+
+User Action
+→ Behavior (event normalize)
+→ EventBus
+→ Runtime Engine (decision)
+→ Recovery (if needed)
+→ Adapter (render only)
+
+---
+
+## 9. ENGINE RULE
+
+Only runtime/engine.ts can:
+- move to next step
+- change workflow state
+- trigger recovery
+
+---
+
+## 10. SAFETY RULE
+
+If uncertain:
+→ DO NOT add logic into behavior or adapter
+→ ALWAYS default to runtime engine responsibility

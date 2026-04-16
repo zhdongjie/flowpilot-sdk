@@ -1,1 +1,1 @@
-export { BehaviorEngine as StepBehaviorEngine } from "../behavior/engine";
+export { RuntimeEngine as StepBehaviorEngine } from "./engine";

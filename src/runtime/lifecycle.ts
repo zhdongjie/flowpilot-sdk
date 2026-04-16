@@ -1,92 +1,41 @@
-import type { MappingRegistry, Step } from "../types";
-import { resolveElement, resolvePages } from "../mapping/resolver";
-import { pageMatches, stateMatches } from "./stepEngine";
-import { GuideRuntime } from "./ui";
+import type { Step } from "../core/types";
+import type { DomAdapter } from "../adapter/dom";
 
-export type ValidationSuccess = {
-  valid: true;
-  element: Element;
-  selectors: string[];
+type LifecycleHooks = {
+  onStepChange?: (step: Step) => void;
+  onFinish?: () => void;
+  onError?: (err: Error) => void;
 };
 
-export type ValidationFailure = {
-  valid: false;
-  reason: "page-mismatch" | "state-mismatch" | "element-missing";
-  selectors?: string[];
-};
+export class RuntimeLifecycle {
+  private adapter: DomAdapter;
+  private hooks: LifecycleHooks;
 
-export type ValidationResult = ValidationSuccess | ValidationFailure;
-
-export const isValidationFailure = (
-  result: ValidationResult
-): result is ValidationFailure => !result.valid;
-
-type ValidationContext = {
-  currentPage?: string;
-  state?: Record<string, any>;
-};
-
-type EnterOptions = {
-  showNext?: boolean;
-  onNext?: () => void;
-};
-
-export class StepLifecycle {
-  private ui: GuideRuntime;
-  private mapping?: MappingRegistry;
-
-  constructor(
-    ui: GuideRuntime,
-    mapping: MappingRegistry | undefined,
-    _legacyBehavior?: unknown
-  ) {
-    this.ui = ui;
-    this.mapping = mapping;
+  constructor(adapter: DomAdapter, hooks: LifecycleHooks) {
+    this.adapter = adapter;
+    this.hooks = hooks;
   }
 
-  validate(step: Step, context: ValidationContext): ValidationResult {
-    if (!pageMatches(step, context.currentPage)) {
-      return { valid: false, reason: "page-mismatch" };
-    }
-    if (!stateMatches(step.state, context.state)) {
-      return { valid: false, reason: "state-mismatch" };
-    }
-    const mappingPages = resolvePages(step.highlight, this.mapping);
-    if (
-      mappingPages.length &&
-      context.currentPage &&
-      !mappingPages.includes(context.currentPage)
-    ) {
-      return { valid: false, reason: "page-mismatch" };
-    }
-    const { element, selectors } = resolveElement(
-      step.highlight,
-      this.mapping,
-      context.currentPage
-    );
-    if (!element) {
-      return { valid: false, reason: "element-missing", selectors };
-    }
-    return { valid: true, element, selectors };
+  enterStep(step: Step) {
+    this.adapter.renderStep(step);
+    this.hooks.onStepChange?.(step);
   }
 
-  enter(step: Step, element: Element | null, options?: EnterOptions) {
-    this.exit();
-
-    this.ui.render(element, {
-      message: step.action || "",
-      reason: step.desc || "",
-      showNext: options?.showNext,
-      onNext: options?.onNext,
-    });
+  clearStep() {
+    this.adapter.clear();
   }
 
-  exit() {
-    this.ui.clear();
+  finish() {
+    this.adapter.clear();
+    this.hooks.onFinish?.();
+  }
+
+  error(error: Error) {
+    console.error("[FlowPilot]", error);
+    this.hooks.onError?.(error);
   }
 
   destroy() {
-    this.exit();
-    this.ui.destroy();
+    this.adapter.destroy();
   }
 }

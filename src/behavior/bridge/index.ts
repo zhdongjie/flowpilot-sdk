@@ -1,18 +1,20 @@
-import { EventBus } from "../eventBus";
-import { initClickBridge } from "./clickBridge";
-import { initFormBridge } from "./formBridge";
-import { initRouteBridge } from "./routeBridge";
+import { BehaviorListener } from "../listener";
+import type { EventBus } from "../../runtime/eventBus";
 
-export const initBehaviorBridge = (eventBus: EventBus) => {
-  const cleanups = [
-    initClickBridge(eventBus),
-    initFormBridge(eventBus),
-    initRouteBridge(eventBus),
-  ];
-
-  return () => {
-    cleanups.forEach((cleanup) => cleanup());
-  };
+export const initClickBridge = (_eventBus: EventBus) => {
+  return () => {};
 };
 
-export { initClickBridge, initFormBridge, initRouteBridge };
+export const initFormBridge = (_eventBus: EventBus) => {
+  return () => {};
+};
+
+export const initRouteBridge = (_eventBus: EventBus) => {
+  return () => {};
+};
+
+export const initBehaviorBridge = (eventBus: EventBus, getCurrentPage: () => string) => {
+  const listener = new BehaviorListener(eventBus, { getCurrentPage });
+  listener.start();
+  return () => listener.stop();
+};

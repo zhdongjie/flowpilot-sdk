@@ -1,14 +1,21 @@
-import type { InitConfig, Workflow } from "./types";
-import { initBehaviorBridge } from "./behavior/bridge";
+import type { InitConfig, Workflow } from "./core/types";
+import { normalizeWorkflows } from "./core/workflow";
+import { BehaviorListener } from "./behavior/listener";
 import type { ActionEvent, ActionEventInput, FlowPilotEventMeta } from "./behavior/protocol";
-import { eventBus } from "./behavior/eventBus";
+import { DomAdapter } from "./adapter/dom";
 import { mountShadowRoot } from "./runtime/shadow";
-import { FlowPilotRuntime } from "./runtime/runtime";
+import { EventBus } from "./runtime/eventBus";
+import { RuntimeLifecycle } from "./runtime/lifecycle";
+import { RuntimeEngine } from "./runtime/engine";
+import { RecoveryManager } from "./recovery/recovery";
 
 type PluginState = {
   config: InitConfig | null;
-  runtime: FlowPilotRuntime | null;
-  disposeBehaviorBridge: (() => void) | null;
+  workflows: Workflow[];
+  eventBus: EventBus | null;
+  adapter: DomAdapter | null;
+  listener: BehaviorListener | null;
+  engine: RuntimeEngine | null;
   initialized: boolean;
 };
 
@@ -17,28 +24,18 @@ const GLOBAL_INIT_FLAG = "__FLOWPILOT__";
 
 const state: PluginState = {
   config: null,
-  runtime: null,
-  disposeBehaviorBridge: null,
+  workflows: [],
+  eventBus: null,
+  adapter: null,
+  listener: null,
+  engine: null,
   initialized: false,
 };
 
-const logDebug = (...args: any[]) => {
-  if (state.config?.debug) {
-    console.log("[FlowPilot]", ...args);
-  }
-};
-
-const getWorkflow = (config: InitConfig, taskId?: string): Workflow | null => {
-  const workflows = Array.isArray(config.workflow)
-    ? config.workflow
-    : [config.workflow];
-  if (taskId) {
-    return workflows.find((item) => item.id === taskId) || workflows[0] || null;
-  }
-  return workflows[0] || null;
-};
-
 const resolveCurrentPage = () => {
+  if (state.adapter) {
+    return state.adapter.getCurrentPage();
+  }
   if (state.config?.getCurrentPage) {
     return state.config.getCurrentPage() || "";
   }
@@ -93,38 +90,63 @@ const init = (config: InitConfig) => {
     return;
   }
 
-  state.config = config;
-  const shadowRoot = mountShadowRoot();
-  state.runtime = new FlowPilotRuntime(config, shadowRoot, eventBus);
-  state.disposeBehaviorBridge = initBehaviorBridge(eventBus);
-  state.initialized = true;
-  (window as any)[GLOBAL_INIT_FLAG] = true;
-
-  if (state.config.debug) {
-    logDebug("init", config);
+  const workflows = normalizeWorkflows(config.workflow);
+  if (!workflows.length) {
+    config.onError?.(new Error("Workflow not found"));
+    return;
   }
 
-  if (state.config.autoStart) {
-    const workflow = getWorkflow(config);
-    if (workflow) {
-      start(workflow.id);
-    } else {
-      config.onError?.(new Error("Workflow not found for autoStart"));
+  const eventBus = new EventBus();
+  const root = mountShadowRoot();
+  const adapter = new DomAdapter(root, config.mapping, config.getCurrentPage);
+  const lifecycle = new RuntimeLifecycle(adapter, {
+    onStepChange: config.onStepChange,
+    onFinish: config.onFinish,
+    onError: config.onError,
+  });
+  const recovery = new RecoveryManager(adapter);
+  const engine = new RuntimeEngine({
+    workflows,
+    eventBus,
+    adapter,
+    lifecycle,
+    recovery,
+    debug: config.debug,
+  });
+  const listener = new BehaviorListener(eventBus, {
+    getCurrentPage: () => adapter.getCurrentPage(),
+  });
+
+  listener.start();
+
+  state.config = config;
+  state.workflows = workflows;
+  state.eventBus = eventBus;
+  state.adapter = adapter;
+  state.listener = listener;
+  state.engine = engine;
+  state.initialized = true;
+
+  if (typeof window !== "undefined") {
+    (window as any)[GLOBAL_INIT_FLAG] = true;
+  }
+
+  if (config.autoStart) {
+    const firstWorkflow = workflows[0];
+    if (firstWorkflow) {
+      engine.start(firstWorkflow.id);
     }
   }
 };
 
-const start = (intent: string) => {
-  if (!state.runtime) {
-    return;
-  }
-  state.runtime.start(intent);
+const start = (taskId: string) => {
+  state.engine?.start(taskId);
 };
 
 const emit = (event: ActionEventInput) => {
   try {
     const normalized = normalizeActionEvent(event);
-    eventBus.emit("ACTION", normalized);
+    state.eventBus?.emit("ACTION", normalized);
   } catch (error) {
     const normalizedError =
       error instanceof Error ? error : new Error("FlowPilot.emit failed");
@@ -134,22 +156,28 @@ const emit = (event: ActionEventInput) => {
 };
 
 const reset = () => {
-  state.runtime?.reset();
+  state.engine?.reset();
 };
 
 const destroy = () => {
-  state.runtime?.destroy();
-  state.disposeBehaviorBridge?.();
+  state.listener?.stop();
+  state.engine?.destroy();
+
   const host = document.getElementById("flowpilot-root");
   if (host && host.parentNode) {
     host.parentNode.removeChild(host);
   }
+
   if (typeof window !== "undefined") {
     delete (window as any)[GLOBAL_INIT_FLAG];
   }
+
   state.config = null;
-  state.runtime = null;
-  state.disposeBehaviorBridge = null;
+  state.workflows = [];
+  state.eventBus = null;
+  state.adapter = null;
+  state.listener = null;
+  state.engine = null;
   state.initialized = false;
 };
 

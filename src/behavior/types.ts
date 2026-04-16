@@ -1,4 +1,4 @@
-import type { FlowPilotEvent } from "./protocol";
+import type { ActionEvent } from "./protocol";
 
 export type BehaviorType = "click" | "form" | "route";
 
@@ -6,7 +6,7 @@ export type Completion =
   | {
       type: "event";
       name?: string;
-      match?: (event: FlowPilotEvent) => boolean;
+      match?: (event: ActionEvent) => boolean;
     }
   | {
       type: "state";
@@ -15,14 +15,11 @@ export type Completion =
 
 export interface StepBehavior {
   type: BehaviorType;
-  trigger?: {
-    selector?: string;
-  };
   autoEmit?: string;
   completion?: Completion;
 }
 
 export type StepCompletePayload = {
   stepId: number;
-  event: FlowPilotEvent;
+  event: ActionEvent;
 };
