@@ -1,6 +1,6 @@
 import type { InitConfig, Workflow } from "./types";
 import { initBehaviorBridge } from "./behavior/bridge";
-import type { ActionEvent } from "./behavior/protocol";
+import type { ActionEvent, ActionEventInput, FlowPilotEventMeta } from "./behavior/protocol";
 import { eventBus } from "./behavior/eventBus";
 import { mountShadowRoot } from "./runtime/shadow";
 import { FlowPilotRuntime } from "./runtime/runtime";
@@ -36,6 +36,51 @@ const getWorkflow = (config: InitConfig, taskId?: string): Workflow | null => {
     return workflows.find((item) => item.id === taskId) || workflows[0] || null;
   }
   return workflows[0] || null;
+};
+
+const resolveCurrentPage = () => {
+  if (state.config?.getCurrentPage) {
+    return state.config.getCurrentPage() || "";
+  }
+  if (typeof window !== "undefined") {
+    return window.location.pathname || "";
+  }
+  return "";
+};
+
+const normalizeActionEvent = (event: ActionEventInput): ActionEvent => {
+  if (!event || typeof event.name !== "string" || !event.name.trim()) {
+    throw new Error("FlowPilot.emit requires a non-empty event.name");
+  }
+
+  const metaInput = event.meta || {};
+  const meta: FlowPilotEventMeta = {
+    timestamp:
+      typeof metaInput.timestamp === "number" ? metaInput.timestamp : Date.now(),
+    source: metaInput.source || "system",
+    trigger: metaInput.trigger || "manual",
+    page:
+      typeof metaInput.page === "string" && metaInput.page.length > 0
+        ? metaInput.page
+        : resolveCurrentPage(),
+    stepId: metaInput.stepId,
+    workflowId: metaInput.workflowId,
+    element: metaInput.element
+      ? {
+          selector: metaInput.element.selector,
+          guideId: metaInput.element.guideId,
+          text: metaInput.element.text,
+        }
+      : undefined,
+    context: metaInput.context ? { ...metaInput.context } : undefined,
+  };
+
+  return {
+    type: "ACTION",
+    name: event.name,
+    payload: event.payload,
+    meta,
+  };
 };
 
 const init = (config: InitConfig) => {
@@ -76,8 +121,16 @@ const start = (intent: string) => {
   state.runtime.start(intent);
 };
 
-const emit = (event: ActionEvent) => {
-  eventBus.emit("ACTION", event);
+const emit = (event: ActionEventInput) => {
+  try {
+    const normalized = normalizeActionEvent(event);
+    eventBus.emit("ACTION", normalized);
+  } catch (error) {
+    const normalizedError =
+      error instanceof Error ? error : new Error("FlowPilot.emit failed");
+    state.config?.onError?.(normalizedError);
+    throw normalizedError;
+  }
 };
 
 const reset = () => {

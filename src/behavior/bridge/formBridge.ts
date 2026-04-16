@@ -1,5 +1,5 @@
 import { EventBus } from "../eventBus";
-import type { BehaviorEvent } from "../protocol";
+import type { ActionEvent } from "../protocol";
 
 const serializeFormData = (form: HTMLFormElement) => {
   const formData = new FormData(form);
@@ -17,48 +17,64 @@ const serializeFormData = (form: HTMLFormElement) => {
   return output;
 };
 
+const getPage = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.location.pathname || "";
+};
+
 export const initFormBridge = (eventBus: EventBus) => {
   if (typeof document === "undefined") {
     return () => {};
   }
 
-  const resolveGuideForm = (target: EventTarget | null) => {
+  const resolveForm = (target: EventTarget | null) => {
     if (!(target instanceof Element)) {
       return null;
     }
+
     const form = target instanceof HTMLFormElement ? target : target.closest("form");
     if (!(form instanceof HTMLFormElement)) {
       return null;
     }
 
     const guideNode = form.closest("[data-guide-id]");
-    if (!guideNode) {
-      return null;
-    }
-
-    const guideId = guideNode.getAttribute("data-guide-id");
-    if (!guideId) {
-      return null;
-    }
+    const guideId = guideNode?.getAttribute("data-guide-id") || undefined;
 
     return { form, guideId };
   };
 
   const emitFormEvent = (event: Event) => {
-    const resolved = resolveGuideForm(event.target);
+    const resolved = resolveForm(event.target);
     if (!resolved) {
       return;
     }
-    const { form, guideId } = resolved;
 
-    const eventPayload: BehaviorEvent = {
-      source: "form",
-      guideId,
-      formData: serializeFormData(form),
-      timestamp: Date.now(),
+    const { form, guideId } = resolved;
+    const element = guideId
+      ? {
+          selector: `[data-guide-id='${guideId}']`,
+          guideId,
+        }
+      : undefined;
+
+    const actionEvent: ActionEvent = {
+      type: "ACTION",
+      name: "sdk_form_submit",
+      meta: {
+        timestamp: Date.now(),
+        source: "sdk",
+        trigger: "form",
+        page: getPage(),
+        element,
+        context: {
+          formData: serializeFormData(form),
+        },
+      },
     };
 
-    eventBus.emit("BEHAVIOR_EVENT", eventPayload);
+    eventBus.emit("ACTION", actionEvent);
   };
 
   const onSubmit = (event: Event) => emitFormEvent(event);

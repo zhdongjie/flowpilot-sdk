@@ -1,4 +1,4 @@
-﻿# Workflow Specification
+# Workflow Specification
 
 A workflow is the core guidance definition.
 
@@ -18,7 +18,7 @@ A workflow is the core guidance definition.
         "type": "form",
         "completion": {
           "type": "event",
-          "name": "login_form_filled"
+          "name": "auth_login_success"
         }
       }
     }
@@ -37,31 +37,46 @@ A workflow is the core guidance definition.
 - `form?`: form fields metadata
 - `behavior?`: completion behavior
 
-## Completion Model (emit-only)
+## Completion Model (Event-only)
 
 ```ts
-type Completion = {
-  type: "event";
-  name: string;
-  validator?: (payload: any) => boolean;
-};
+type Completion =
+  | {
+      type: "event";
+      name?: string;
+      match?: (event: FlowPilotEvent) => boolean;
+    }
+  | {
+      type: "state";
+      validator: (ctx: any) => boolean;
+    };
 ```
+
+- Only `event` completion can trigger `STEP_COMPLETE`.
+- `state` completion is validation-only context and cannot trigger completion.
+- `form` has no default completion and must explicitly define an `event` completion.
+
+## Default behavior completion
+
+- `click`: defaults to `event.meta.trigger === "click"` and same step `guideId`.
+- `route`: defaults to `event.meta.trigger === "route"`.
+- `form`: no default completion.
 
 ## Optional auto emit
 
 ```ts
 behavior: {
   type: "click",
-  autoEmit: "menu_open_account_clicked",
-  completion: { type: "event", name: "menu_open_account_clicked" }
+  autoEmit: "menu_click_open_account",
+  completion: { type: "event", name: "menu_click_open_account" }
 }
 ```
 
-`autoEmit` is optional convenience. It still advances steps through `ACTION` events only.
+`autoEmit` emits a derived `ACTION` event name and still follows event-only completion.
 
 ## Best Practices
 
 - Keep one clear user action per step.
 - Use stable `highlight` keys (`ui.xxx`) and map selectors separately.
+- Use semantic event names (`<domain>_<action>_<result?>`) in business emits.
 - Prefer explicit `FlowPilot.emit` in business code for critical transitions.
-- Use `autoEmit` only for deterministic UI actions.

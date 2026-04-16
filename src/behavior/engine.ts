@@ -1,6 +1,6 @@
-﻿import type { Step } from "../types";
+import type { Step } from "../types";
 import { EventBus } from "./eventBus";
-import type { ActionEvent, BehaviorEvent } from "./protocol";
+import type { ActionEvent, BehaviorSource } from "./protocol";
 import type { StepBehavior } from "./types";
 
 type RegisteredBehavior = {
@@ -14,12 +14,10 @@ export class BehaviorEngine {
   private behaviors = new Map<number, RegisteredBehavior>();
   private activeStepId: number | null = null;
   private completedSteps = new Set<number>();
-  private detachBehaviorListener: (() => void) | null = null;
   private detachActionListener: (() => void) | null = null;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
-    this.bindBehaviorEvent();
     this.bindActionEvent();
   }
 
@@ -59,42 +57,11 @@ export class BehaviorEngine {
   }
 
   destroy() {
-    if (this.detachBehaviorListener) {
-      this.detachBehaviorListener();
-      this.detachBehaviorListener = null;
-    }
     if (this.detachActionListener) {
       this.detachActionListener();
       this.detachActionListener = null;
     }
     this.reset();
-  }
-
-  private bindBehaviorEvent() {
-    this.detachBehaviorListener = this.eventBus.on<BehaviorEvent>(
-      "BEHAVIOR_EVENT",
-      (event) => {
-        const current = this.getCurrentStep();
-        if (!current) {
-          return;
-        }
-
-        const autoEmit = current.behavior.autoEmit;
-        if (!autoEmit) {
-          return;
-        }
-
-        if (!this.matchesAutoEmit(current, event)) {
-          return;
-        }
-
-        this.eventBus.emit<ActionEvent>("ACTION", {
-          type: "ACTION",
-          name: autoEmit,
-          payload: event,
-        });
-      }
-    );
   }
 
   private bindActionEvent() {
@@ -104,38 +71,64 @@ export class BehaviorEngine {
         return;
       }
 
-      const completion = current.behavior.completion;
-      if (!completion || completion.type !== "event") {
-        return;
+      const autoEmit = current.behavior.autoEmit;
+      if (autoEmit && this.shouldAutoEmit(current, event, autoEmit)) {
+        this.eventBus.emit<ActionEvent>("ACTION", {
+          ...event,
+          name: autoEmit,
+          payload: event.payload ?? event,
+        });
       }
 
-      if (event.name !== completion.name) {
-        return;
+      if (this.shouldCompleteFromActionEvent(current, event)) {
+        this.complete(current, event);
       }
-
-      if (typeof completion.validator === "function") {
-        if (!completion.validator(event.payload)) {
-          return;
-        }
-      }
-
-      this.complete(current, event);
     });
   }
 
-  private matchesAutoEmit(step: RegisteredBehavior, event: BehaviorEvent) {
-    if (event.source === "route") {
+  private shouldAutoEmit(
+    step: RegisteredBehavior,
+    event: ActionEvent,
+    autoEmit: string
+  ) {
+    if (event.name === autoEmit) {
+      return false;
+    }
+
+    const trigger = event.meta.trigger;
+    if (!this.isBehaviorTrigger(trigger) || trigger !== step.behavior.type) {
+      return false;
+    }
+
+    if (trigger === "route") {
       return true;
     }
 
-    if (event.source === "click" || event.source === "form") {
-      if (!step.guideId) {
-        return true;
-      }
-      return event.guideId === step.guideId;
+    if (!step.guideId) {
+      return true;
     }
 
-    return false;
+    return event.meta.element?.guideId === step.guideId;
+  }
+
+  private isBehaviorTrigger(trigger: ActionEvent["meta"]["trigger"]): trigger is BehaviorSource {
+    return trigger === "click" || trigger === "route" || trigger === "form";
+  }
+
+  private shouldCompleteFromActionEvent(step: RegisteredBehavior, event: ActionEvent) {
+    const completion = step.behavior.completion;
+    if (!completion || completion.type !== "event") {
+      return false;
+    }
+
+    const matchesName =
+      typeof completion.name === "string" &&
+      completion.name.length > 0 &&
+      event.name === completion.name;
+    const matchesEvent =
+      typeof completion.match === "function" && completion.match(event);
+
+    return matchesName || matchesEvent;
   }
 
   private getCurrentStep() {
@@ -152,7 +145,7 @@ export class BehaviorEngine {
     return current;
   }
 
-  private complete(step: RegisteredBehavior, event: BehaviorEvent | ActionEvent) {
+  private complete(step: RegisteredBehavior, event: ActionEvent) {
     if (this.completedSteps.has(step.stepId)) {
       return;
     }
@@ -165,18 +158,68 @@ export class BehaviorEngine {
   }
 
   private resolveBehavior(step: Step): StepBehavior {
+    let resolved: StepBehavior;
+
     if (step.behavior) {
-      return step.behavior;
+      resolved = { ...step.behavior };
+    } else if (step.type) {
+      resolved = { type: step.type };
+    } else if (step.form && step.form.length) {
+      resolved = { type: "form" };
+    } else {
+      resolved = { type: "click" };
     }
 
-    if (step.type) {
-      return { type: step.type };
+    return this.normalizeBehaviorCompletion(resolved, step.highlight || "");
+  }
+
+  private normalizeBehaviorCompletion(
+    behavior: StepBehavior,
+    guideId: string
+  ): StepBehavior {
+    if (behavior.type === "click") {
+      return {
+        ...behavior,
+        completion: this.resolveClickOrRouteCompletion(
+          "click",
+          behavior.completion,
+          guideId
+        ),
+      };
     }
 
-    if (step.form && step.form.length) {
-      return { type: "form" };
+    if (behavior.type === "route") {
+      return {
+        ...behavior,
+        completion: this.resolveClickOrRouteCompletion("route", behavior.completion),
+      };
     }
 
-    return { type: "click" };
+    return behavior;
+  }
+
+  private resolveClickOrRouteCompletion(
+    source: "click" | "route",
+    completion: StepBehavior["completion"],
+    guideId = ""
+  ): StepBehavior["completion"] {
+    if (completion?.type === "event") {
+      return completion;
+    }
+
+    return {
+      type: "event",
+      match: (event) => {
+        if (event.meta.trigger !== source) {
+          return false;
+        }
+
+        if (source !== "click" || !guideId) {
+          return true;
+        }
+
+        return event.meta.element?.guideId === guideId;
+      },
+    };
   }
 }

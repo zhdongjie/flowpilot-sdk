@@ -1,10 +1,19 @@
 import { EventBus } from "../eventBus";
-import type { BehaviorEvent } from "../protocol";
+import type { ActionEvent } from "../protocol";
 
-const buildRouteEvent = (): BehaviorEvent => ({
-  source: "route",
-  pathname: window.location.pathname,
-  timestamp: Date.now(),
+const buildRouteEvent = (): ActionEvent => ({
+  type: "ACTION",
+  name: "sdk_route_change",
+  meta: {
+    timestamp: Date.now(),
+    source: "sdk",
+    trigger: "route",
+    page: window.location.pathname,
+    context: {
+      search: window.location.search,
+      hash: window.location.hash,
+    },
+  },
 });
 
 export const initRouteBridge = (eventBus: EventBus) => {
@@ -13,7 +22,7 @@ export const initRouteBridge = (eventBus: EventBus) => {
   }
 
   const emitRouteChange = () => {
-    eventBus.emit("BEHAVIOR_EVENT", buildRouteEvent());
+    eventBus.emit("ACTION", buildRouteEvent());
   };
 
   const onPopState = () => emitRouteChange();

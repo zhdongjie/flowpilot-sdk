@@ -106,14 +106,13 @@ export class FlowPilotRuntime {
       return;
     }
 
-    const behaviorEvent = stepComplete?.event;
+    const actionEvent = stepComplete?.event;
     if (
-      behaviorEvent &&
-      "source" in behaviorEvent &&
-      behaviorEvent.source === "route" &&
-      typeof behaviorEvent.pathname === "string"
+      actionEvent &&
+      actionEvent.meta.trigger === "route" &&
+      typeof actionEvent.meta.page === "string"
     ) {
-      this.stateMachine.updatePage(behaviorEvent.pathname);
+      this.stateMachine.updatePage(actionEvent.meta.page);
     }
 
     this.clearElementRetry();

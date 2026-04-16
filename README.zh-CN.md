@@ -17,6 +17,41 @@ FlowPilot 是一个前端引导 SDK，用于在产品中实现分步式任务引
 - 自动行为捕获（`click`、`form`、`route`）
 - 通过 `FlowPilot.emit` 统一动作协议
 
+## Event Schema v1
+
+- FlowPilot 使用统一 `ACTION` 事件结构覆盖 `click | route | form | emit | AI` 来源。
+- 步骤推进只认事件（`No event -> No step completion`）。
+- `state` 仅用于校验上下文，不触发 completion。
+- `form` 步骤不生成默认 completion，必须显式定义 event completion。
+
+```ts
+type FlowPilotEvent = {
+  type: "ACTION";
+  name: string;
+  payload?: any;
+  meta: {
+    timestamp: number;
+    source: "user" | "system" | "sdk" | "ai";
+    trigger: "click" | "route" | "form" | "api" | "manual";
+    page: string;
+    stepId?: number;
+    workflowId?: string;
+    element?: {
+      selector?: string;
+      guideId?: string;
+      text?: string;
+    };
+    context?: Record<string, any>;
+  };
+};
+```
+
+### 设计原则
+
+- FlowPilot does not detect behavior. FlowPilot consumes standardized events.
+- Event is the single source of truth.
+- No event -> No step completion.
+
 ## 安装
 
 ### CDN
@@ -66,7 +101,7 @@ npm run build
 ## 后端驱动配置（前端零组装）
 
 前端可直接请求后端配置并传入 `FlowPilot.init`。
-步骤完成可通过事件名由业务层显式控制。
+步骤完成由配置中的行为事件显式控制。
 
 ```js
 const config = await fetch("/flowpilot/config").then((r) => r.json());
@@ -77,13 +112,10 @@ FlowPilot.init({
 ```
 
 ```js
-FlowPilot.emit({
-  type: "ACTION",
-  name: "login_success"
-});
+FlowPilot.emit({ name: "auth_login_success" });
 ```
 
-行为协议 v1 见 [docs/API.zh-CN.md](docs/API.zh-CN.md)。
+Event Schema v1 见 [docs/API.zh-CN.md](docs/API.zh-CN.md)。
 
 ## 责任边界
 

@@ -17,6 +17,41 @@ Language:
 - Auto behavior capture for `click`, `form`, and `route`
 - Unified action protocol via `FlowPilot.emit`
 
+## Event Schema v1
+
+- FlowPilot uses a standardized `ACTION` event schema for `click | route | form | emit | AI` sources.
+- Step completion is event-only (`No event -> No step completion`).
+- `state` remains validation-only context and is not a completion trigger.
+- `form` steps do not get default completion; they must define explicit event completion.
+
+```ts
+type FlowPilotEvent = {
+  type: "ACTION";
+  name: string;
+  payload?: any;
+  meta: {
+    timestamp: number;
+    source: "user" | "system" | "sdk" | "ai";
+    trigger: "click" | "route" | "form" | "api" | "manual";
+    page: string;
+    stepId?: number;
+    workflowId?: string;
+    element?: {
+      selector?: string;
+      guideId?: string;
+      text?: string;
+    };
+    context?: Record<string, any>;
+  };
+};
+```
+
+### Design Principles
+
+- FlowPilot does not detect behavior. FlowPilot consumes standardized events.
+- Event is the single source of truth.
+- No event -> No step completion.
+
 ## Installation
 
 ### CDN
@@ -66,7 +101,7 @@ More build options: [docs/BUILD.md](docs/BUILD.md)
 ## Backend-Driven Config (No Frontend Assembly)
 
 Frontend can fetch workflow JSON from backend and pass it directly to `FlowPilot.init`.
-Step completion can be controlled by emitted action names.
+Step completion is controlled by configured behavior events.
 
 ```js
 const config = await fetch("/flowpilot/config").then((r) => r.json());
@@ -77,13 +112,10 @@ FlowPilot.init({
 ```
 
 ```js
-FlowPilot.emit({
-  type: "ACTION",
-  name: "login_success"
-});
+FlowPilot.emit({ name: "auth_login_success" });
 ```
 
-See [docs/API.md](docs/API.md) for Behavior Protocol v1.
+See [docs/API.md](docs/API.md) for Event Schema v1.
 
 ## Scope Boundary
 

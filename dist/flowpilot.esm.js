@@ -1,3 +1,17 @@
+const getPage$1 = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.location.pathname || "";
+};
+const getText = (target) => {
+  var _a;
+  const raw = ((_a = target.textContent) == null ? void 0 : _a.trim()) || "";
+  if (!raw) {
+    return void 0;
+  }
+  return raw.length > 120 ? raw.slice(0, 120) : raw;
+};
 const initClickBridge = (eventBus2) => {
   if (typeof document === "undefined") {
     return () => {
@@ -9,19 +23,25 @@ const initClickBridge = (eventBus2) => {
       return;
     }
     const guideNode = target.closest("[data-guide-id]");
-    if (!guideNode) {
-      return;
-    }
-    const guideId = guideNode.getAttribute("data-guide-id");
-    if (!guideId) {
-      return;
-    }
-    const eventPayload = {
-      source: "click",
+    const guideId = (guideNode == null ? void 0 : guideNode.getAttribute("data-guide-id")) || void 0;
+    const text = getText(target);
+    const element = guideId || text ? {
+      selector: guideId ? `[data-guide-id='${guideId}']` : void 0,
       guideId,
-      timestamp: Date.now()
+      text
+    } : void 0;
+    const actionEvent = {
+      type: "ACTION",
+      name: "sdk_click",
+      meta: {
+        timestamp: Date.now(),
+        source: "sdk",
+        trigger: "click",
+        page: getPage$1(),
+        element
+      }
     };
-    eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
+    eventBus2.emit("ACTION", actionEvent);
   };
   document.addEventListener("click", handler, true);
   return () => {
@@ -41,12 +61,18 @@ const serializeFormData = (form) => {
   });
   return output;
 };
+const getPage = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.location.pathname || "";
+};
 const initFormBridge = (eventBus2) => {
   if (typeof document === "undefined") {
     return () => {
     };
   }
-  const resolveGuideForm = (target) => {
+  const resolveForm = (target) => {
     if (!(target instanceof Element)) {
       return null;
     }
@@ -55,28 +81,34 @@ const initFormBridge = (eventBus2) => {
       return null;
     }
     const guideNode = form.closest("[data-guide-id]");
-    if (!guideNode) {
-      return null;
-    }
-    const guideId = guideNode.getAttribute("data-guide-id");
-    if (!guideId) {
-      return null;
-    }
+    const guideId = (guideNode == null ? void 0 : guideNode.getAttribute("data-guide-id")) || void 0;
     return { form, guideId };
   };
   const emitFormEvent = (event) => {
-    const resolved = resolveGuideForm(event.target);
+    const resolved = resolveForm(event.target);
     if (!resolved) {
       return;
     }
     const { form, guideId } = resolved;
-    const eventPayload = {
-      source: "form",
-      guideId,
-      formData: serializeFormData(form),
-      timestamp: Date.now()
+    const element = guideId ? {
+      selector: `[data-guide-id='${guideId}']`,
+      guideId
+    } : void 0;
+    const actionEvent = {
+      type: "ACTION",
+      name: "sdk_form_submit",
+      meta: {
+        timestamp: Date.now(),
+        source: "sdk",
+        trigger: "form",
+        page: getPage(),
+        element,
+        context: {
+          formData: serializeFormData(form)
+        }
+      }
     };
-    eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
+    eventBus2.emit("ACTION", actionEvent);
   };
   const onSubmit = (event) => emitFormEvent(event);
   document.addEventListener("submit", onSubmit, true);
@@ -85,9 +117,18 @@ const initFormBridge = (eventBus2) => {
   };
 };
 const buildRouteEvent = () => ({
-  source: "route",
-  pathname: window.location.pathname,
-  timestamp: Date.now()
+  type: "ACTION",
+  name: "sdk_route_change",
+  meta: {
+    timestamp: Date.now(),
+    source: "sdk",
+    trigger: "route",
+    page: window.location.pathname,
+    context: {
+      search: window.location.search,
+      hash: window.location.hash
+    }
+  }
 });
 const initRouteBridge = (eventBus2) => {
   if (typeof window === "undefined") {
@@ -95,7 +136,7 @@ const initRouteBridge = (eventBus2) => {
     };
   }
   const emitRouteChange = () => {
-    eventBus2.emit("BEHAVIOR_EVENT", buildRouteEvent());
+    eventBus2.emit("ACTION", buildRouteEvent());
   };
   const onPopState = () => emitRouteChange();
   const onHashChange = () => emitRouteChange();
@@ -174,10 +215,8 @@ class BehaviorEngine {
     this.behaviors = /* @__PURE__ */ new Map();
     this.activeStepId = null;
     this.completedSteps = /* @__PURE__ */ new Set();
-    this.detachBehaviorListener = null;
     this.detachActionListener = null;
     this.eventBus = eventBus2;
-    this.bindBehaviorEvent();
     this.bindActionEvent();
   }
   register(stepId, behavior, guideId = "") {
@@ -210,38 +249,11 @@ class BehaviorEngine {
     this.completedSteps.clear();
   }
   destroy() {
-    if (this.detachBehaviorListener) {
-      this.detachBehaviorListener();
-      this.detachBehaviorListener = null;
-    }
     if (this.detachActionListener) {
       this.detachActionListener();
       this.detachActionListener = null;
     }
     this.reset();
-  }
-  bindBehaviorEvent() {
-    this.detachBehaviorListener = this.eventBus.on(
-      "BEHAVIOR_EVENT",
-      (event) => {
-        const current = this.getCurrentStep();
-        if (!current) {
-          return;
-        }
-        const autoEmit = current.behavior.autoEmit;
-        if (!autoEmit) {
-          return;
-        }
-        if (!this.matchesAutoEmit(current, event)) {
-          return;
-        }
-        this.eventBus.emit("ACTION", {
-          type: "ACTION",
-          name: autoEmit,
-          payload: event
-        });
-      }
-    );
   }
   bindActionEvent() {
     this.detachActionListener = this.eventBus.on("ACTION", (event) => {
@@ -249,32 +261,47 @@ class BehaviorEngine {
       if (!current) {
         return;
       }
-      const completion = current.behavior.completion;
-      if (!completion || completion.type !== "event") {
-        return;
+      const autoEmit = current.behavior.autoEmit;
+      if (autoEmit && this.shouldAutoEmit(current, event, autoEmit)) {
+        this.eventBus.emit("ACTION", {
+          ...event,
+          name: autoEmit,
+          payload: event.payload ?? event
+        });
       }
-      if (event.name !== completion.name) {
-        return;
+      if (this.shouldCompleteFromActionEvent(current, event)) {
+        this.complete(current, event);
       }
-      if (typeof completion.validator === "function") {
-        if (!completion.validator(event.payload)) {
-          return;
-        }
-      }
-      this.complete(current, event);
     });
   }
-  matchesAutoEmit(step, event) {
-    if (event.source === "route") {
+  shouldAutoEmit(step, event, autoEmit) {
+    var _a;
+    if (event.name === autoEmit) {
+      return false;
+    }
+    const trigger = event.meta.trigger;
+    if (!this.isBehaviorTrigger(trigger) || trigger !== step.behavior.type) {
+      return false;
+    }
+    if (trigger === "route") {
       return true;
     }
-    if (event.source === "click" || event.source === "form") {
-      if (!step.guideId) {
-        return true;
-      }
-      return event.guideId === step.guideId;
+    if (!step.guideId) {
+      return true;
     }
-    return false;
+    return ((_a = event.meta.element) == null ? void 0 : _a.guideId) === step.guideId;
+  }
+  isBehaviorTrigger(trigger) {
+    return trigger === "click" || trigger === "route" || trigger === "form";
+  }
+  shouldCompleteFromActionEvent(step, event) {
+    const completion = step.behavior.completion;
+    if (!completion || completion.type !== "event") {
+      return false;
+    }
+    const matchesName = typeof completion.name === "string" && completion.name.length > 0 && event.name === completion.name;
+    const matchesEvent = typeof completion.match === "function" && completion.match(event);
+    return matchesName || matchesEvent;
   }
   getCurrentStep() {
     if (this.activeStepId === null) {
@@ -300,16 +327,54 @@ class BehaviorEngine {
     });
   }
   resolveBehavior(step) {
+    let resolved;
     if (step.behavior) {
-      return step.behavior;
+      resolved = { ...step.behavior };
+    } else if (step.type) {
+      resolved = { type: step.type };
+    } else if (step.form && step.form.length) {
+      resolved = { type: "form" };
+    } else {
+      resolved = { type: "click" };
     }
-    if (step.type) {
-      return { type: step.type };
+    return this.normalizeBehaviorCompletion(resolved, step.highlight || "");
+  }
+  normalizeBehaviorCompletion(behavior, guideId) {
+    if (behavior.type === "click") {
+      return {
+        ...behavior,
+        completion: this.resolveClickOrRouteCompletion(
+          "click",
+          behavior.completion,
+          guideId
+        )
+      };
     }
-    if (step.form && step.form.length) {
-      return { type: "form" };
+    if (behavior.type === "route") {
+      return {
+        ...behavior,
+        completion: this.resolveClickOrRouteCompletion("route", behavior.completion)
+      };
     }
-    return { type: "click" };
+    return behavior;
+  }
+  resolveClickOrRouteCompletion(source, completion, guideId = "") {
+    if ((completion == null ? void 0 : completion.type) === "event") {
+      return completion;
+    }
+    return {
+      type: "event",
+      match: (event) => {
+        var _a;
+        if (event.meta.trigger !== source) {
+          return false;
+        }
+        if (source !== "click" || !guideId) {
+          return true;
+        }
+        return ((_a = event.meta.element) == null ? void 0 : _a.guideId) === guideId;
+      }
+    };
   }
 }
 class BehaviorLifecycle {
@@ -946,9 +1011,9 @@ class FlowPilotRuntime {
     if (state2.currentStep.step !== stepId || state2.currentStep.status === "completed") {
       return;
     }
-    const behaviorEvent = stepComplete == null ? void 0 : stepComplete.event;
-    if (behaviorEvent && "source" in behaviorEvent && behaviorEvent.source === "route" && typeof behaviorEvent.pathname === "string") {
-      this.stateMachine.updatePage(behaviorEvent.pathname);
+    const actionEvent = stepComplete == null ? void 0 : stepComplete.event;
+    if (actionEvent && actionEvent.meta.trigger === "route" && typeof actionEvent.meta.page === "string") {
+      this.stateMachine.updatePage(actionEvent.meta.page);
     }
     this.clearElementRetry();
     state2.currentStep.status = "completed";
@@ -1147,6 +1212,42 @@ const getWorkflow = (config, taskId) => {
   const workflows = Array.isArray(config.workflow) ? config.workflow : [config.workflow];
   return workflows[0] || null;
 };
+const resolveCurrentPage = () => {
+  var _a;
+  if ((_a = state.config) == null ? void 0 : _a.getCurrentPage) {
+    return state.config.getCurrentPage() || "";
+  }
+  if (typeof window !== "undefined") {
+    return window.location.pathname || "";
+  }
+  return "";
+};
+const normalizeActionEvent = (event) => {
+  if (!event || typeof event.name !== "string" || !event.name.trim()) {
+    throw new Error("FlowPilot.emit requires a non-empty event.name");
+  }
+  const metaInput = event.meta || {};
+  const meta = {
+    timestamp: typeof metaInput.timestamp === "number" ? metaInput.timestamp : Date.now(),
+    source: metaInput.source || "system",
+    trigger: metaInput.trigger || "manual",
+    page: typeof metaInput.page === "string" && metaInput.page.length > 0 ? metaInput.page : resolveCurrentPage(),
+    stepId: metaInput.stepId,
+    workflowId: metaInput.workflowId,
+    element: metaInput.element ? {
+      selector: metaInput.element.selector,
+      guideId: metaInput.element.guideId,
+      text: metaInput.element.text
+    } : void 0,
+    context: metaInput.context ? { ...metaInput.context } : void 0
+  };
+  return {
+    type: "ACTION",
+    name: event.name,
+    payload: event.payload,
+    meta
+  };
+};
 const init = (config) => {
   var _a;
   if (typeof window !== "undefined" && window[GLOBAL_INIT_FLAG]) {
@@ -1182,7 +1283,15 @@ const start = (intent) => {
   state.runtime.start(intent);
 };
 const emit = (event) => {
-  eventBus.emit("ACTION", event);
+  var _a, _b;
+  try {
+    const normalized = normalizeActionEvent(event);
+    eventBus.emit("ACTION", normalized);
+  } catch (error) {
+    const normalizedError = error instanceof Error ? error : new Error("FlowPilot.emit failed");
+    (_b = (_a = state.config) == null ? void 0 : _a.onError) == null ? void 0 : _b.call(_a, normalizedError);
+    throw normalizedError;
+  }
 };
 const reset = () => {
   var _a;

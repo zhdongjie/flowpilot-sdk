@@ -1,4 +1,4 @@
-﻿# API Reference
+# API Reference
 
 ## Global Object
 
@@ -32,25 +32,47 @@ Starts a workflow by id.
 
 ## `FlowPilot.emit(event)`
 
-Unified behavior protocol API.
+Unified event ingestion API.
+
+### Event Schema v1
 
 ```ts
-FlowPilot.emit({
-  type: "ACTION",
-  name: "login_success",
-  payload: { userId: "u_123" }
-});
-```
-
-Event shape:
-
-```ts
-type ActionEvent = {
+type FlowPilotEvent = {
   type: "ACTION";
   name: string;
   payload?: any;
+  meta: {
+    timestamp: number;
+    source: "user" | "system" | "sdk" | "ai";
+    trigger: "click" | "route" | "form" | "api" | "manual";
+    page: string;
+    stepId?: number;
+    workflowId?: string;
+    element?: {
+      selector?: string;
+      guideId?: string;
+      text?: string;
+    };
+    context?: Record<string, any>;
+  };
 };
 ```
+
+### Minimal business input
+
+SDK auto-normalizes missing fields so this is valid:
+
+```ts
+FlowPilot.emit({ name: "auth_login_success" });
+```
+
+Normalized defaults:
+
+- `type`: `"ACTION"`
+- `meta.timestamp`: `Date.now()`
+- `meta.source`: `"system"`
+- `meta.trigger`: `"manual"`
+- `meta.page`: `getCurrentPage()` if provided, otherwise `window.location.pathname`
 
 ## `FlowPilot.reset()`
 
@@ -60,54 +82,56 @@ Resets current flow state.
 
 Destroys runtime and listeners.
 
-## Behavior Protocol v1 (emit-only)
-
-Step completion is emit-driven only.
+## Step Completion Protocol
 
 ```ts
-type Completion = {
-  type: "event";
-  name: string;
-  validator?: (payload: any) => boolean;
-};
+type Completion =
+  | {
+      type: "event";
+      name?: string;
+      match?: (event: FlowPilotEvent) => boolean;
+    }
+  | {
+      type: "state";
+      validator: (ctx: any) => boolean;
+    };
 ```
 
 ### Completion semantics
 
-1. SDK listens `ACTION` events.
-2. If `event.name === step.behavior.completion.name`, step can complete.
-3. If `validator` exists, SDK checks it first.
+1. SDK listens `ACTION` events only.
+2. Only `completion.type === "event"` can advance a step.
+3. Completion matches when `completion.name === event.name` or `completion.match(event)` is true.
+4. `completion.type === "state"` is validation-only and never triggers `STEP_COMPLETE`.
+
+### Default completion behavior
+
+- `click`: default event completion matches `event.meta.trigger === "click"` and current step `guideId`.
+- `route`: default event completion matches `event.meta.trigger === "route"`.
+- `form`: no default completion; must define explicit event completion.
+
+### Optional auto emit from step behavior
 
 ```ts
-if (completion.validator && !completion.validator(event.payload)) {
-  return;
-}
-// then STEP_COMPLETE
-```
-
-### Optional auto emit from bridge
-
-You can configure optional `autoEmit` in step behavior.
-
-```json
-{
-  "behavior": {
-    "type": "click",
-    "autoEmit": "menu_open_account_clicked",
-    "completion": { "type": "event", "name": "menu_open_account_clicked" }
-  }
+behavior: {
+  type: "click",
+  autoEmit: "menu_click_open_account",
+  completion: { type: "event", name: "menu_click_open_account" }
 }
 ```
 
-Bridges no longer complete steps directly; they can only produce optional ACTION emissions.
+`autoEmit` emits a derived `ACTION` event name and does not bypass completion checks.
 
-## Built-in behavior sources
+## Built-in SDK event producers
 
-- `click`: DOM capture for optional `autoEmit`
-- `form submit`: context capture for optional `autoEmit`
-- `route`: route capture for optional `autoEmit`
+- click bridge emits `sdk_click`
+- form bridge emits `sdk_form_submit`
+- route bridge emits `sdk_route_change`
 
-No SDK network interception:
+All built-in events already follow Event Schema v1.
 
-- no `fetch` hijack
-- no `axios` hook
+## Design principles
+
+- FlowPilot does not detect behavior. FlowPilot consumes standardized events.
+- Event is the single source of truth.
+- No event -> No step completion.

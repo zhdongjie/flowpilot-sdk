@@ -1,15 +1,44 @@
-export type BehaviorSource = "click" | "form" | "route";
+export type FlowPilotEventSource = "user" | "system" | "sdk" | "ai";
 
-export type BehaviorEvent = {
-  source: BehaviorSource;
-  timestamp: number;
+export type FlowPilotEventTrigger =
+  | "click"
+  | "route"
+  | "form"
+  | "api"
+  | "manual";
+
+export type FlowPilotEventElement = {
+  selector?: string;
   guideId?: string;
-  pathname?: string;
-  formData?: Record<string, any>;
+  text?: string;
 };
 
-export type ActionEvent = {
+export type FlowPilotEventMeta = {
+  timestamp: number;
+  source: FlowPilotEventSource;
+  trigger: FlowPilotEventTrigger;
+  page: string;
+  stepId?: number;
+  workflowId?: string;
+  element?: FlowPilotEventElement;
+  context?: Record<string, any>;
+};
+
+export type FlowPilotEvent = {
   type: "ACTION";
   name: string;
   payload?: any;
+  meta: FlowPilotEventMeta;
 };
+
+export type ActionEventInput = {
+  type?: "ACTION";
+  name: string;
+  payload?: any;
+  meta?: Partial<FlowPilotEventMeta>;
+};
+
+export type ActionEvent = FlowPilotEvent;
+
+export type BehaviorSource = Extract<FlowPilotEventTrigger, "click" | "route" | "form">;
+export type BehaviorEvent = FlowPilotEvent;
