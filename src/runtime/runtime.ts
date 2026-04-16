@@ -1,41 +1,54 @@
-﻿import type { InitConfig, Step, Workflow } from "../types";
-import { StepBehaviorEngine } from "./behaviorEngine";
-import { StepLifecycle } from "./lifecycle";
+import type { InitConfig, Step, Workflow } from "../types";
+import type { StepCompletePayload } from "../behavior/types";
+import { BehaviorEngine } from "../behavior/engine";
+import { EventBus } from "../behavior/eventBus";
+import { BehaviorLifecycle } from "../behavior/lifecycle";
+import { isValidationFailure, StepLifecycle } from "./lifecycle";
 import { RuntimeStateMachine } from "./stateMachine";
 import { backfillCompletion } from "./stepCompletion";
 import { reconcileStep } from "./stepReconciler";
 import { GuideRuntime } from "./ui";
 import { PageWatcher } from "./watcher";
-import { findNextStep } from "./stepEngine";
+import { findNextStep, isStepEligible } from "./stepEngine";
 import { createRuntimeAdapter, type RuntimeAdapter } from "./adapter";
-
-type RuntimeEvent =
-  | { type: "PAGE_CHANGE"; page: string }
-  | { type: "STEP_CHANGE"; step: Step | null; index: number | null }
-  | { type: "STEP_COMPLETE"; source: "user" | "auto" }
-  | { type: "FLOW_FINISH" };
 
 export class FlowPilotRuntime {
   private config: InitConfig;
   private adapter: RuntimeAdapter;
   private ui: GuideRuntime;
   private lifecycle: StepLifecycle;
-  private behavior: StepBehaviorEngine;
   private stateMachine: RuntimeStateMachine;
   private watcher: PageWatcher;
+  private eventBus: EventBus;
+  private behaviorEngine: BehaviorEngine;
+  private behaviorLifecycle: BehaviorLifecycle;
   private activeWorkflow: Workflow | null = null;
   private lastInvalidKey: string | null = null;
+  private elementRetryTimer: number | null = null;
+  private elementRetryAttempts = 0;
+  private elementRetryStepId: number | null = null;
 
-  constructor(config: InitConfig, root: ShadowRoot) {
+  constructor(config: InitConfig, root: ShadowRoot, eventBus?: EventBus) {
     this.config = config;
     this.adapter = createRuntimeAdapter(config);
     this.ui = new GuideRuntime(root);
     this.lifecycle = new StepLifecycle(this.ui, config.mapping);
-    this.behavior = new StepBehaviorEngine();
     this.stateMachine = new RuntimeStateMachine(this.adapter.getCurrentPage());
+
+    this.eventBus = eventBus ?? new EventBus();
+    this.behaviorEngine = new BehaviorEngine(this.eventBus);
+    this.behaviorLifecycle = new BehaviorLifecycle(
+      this.eventBus,
+      this,
+      this.behaviorEngine
+    );
+    this.behaviorLifecycle.start();
+
     this.watcher = new PageWatcher({
       getCurrentPage: () => this.adapter.getCurrentPage(),
-      onChange: (page) => this.dispatch({ type: "PAGE_CHANGE", page }),
+      onChange: (page) => {
+        this.onPageChange(page);
+      },
     });
   }
 
@@ -50,21 +63,26 @@ export class FlowPilotRuntime {
       return;
     }
 
+    this.behaviorEngine.reset();
+    workflow.steps.forEach((step) => {
+      step.status = "pending";
+      this.behaviorEngine.registerStep(step);
+    });
+
     this.lifecycle.exit();
     this.lastInvalidKey = null;
     this.activeWorkflow = workflow;
+
     const currentPage = this.adapter.getCurrentPage();
     this.stateMachine.start(taskId, currentPage);
     this.watcher.start();
-    this.dispatch({ type: "PAGE_CHANGE", page: currentPage });
-  }
-
-  next() {
-    this.dispatch({ type: "STEP_COMPLETE", source: "user" });
+    this.onPageChange(currentPage);
   }
 
   reset() {
+    this.clearElementRetry();
     this.lifecycle.exit();
+    this.behaviorEngine.reset();
     this.watcher.stop();
     this.activeWorkflow = null;
     this.lastInvalidKey = null;
@@ -73,106 +91,27 @@ export class FlowPilotRuntime {
 
   destroy() {
     this.reset();
+    this.behaviorLifecycle.stop();
+    this.behaviorEngine.destroy();
     this.lifecycle.destroy();
   }
 
-  private dispatch(event: RuntimeEvent) {
-    switch (event.type) {
-      case "PAGE_CHANGE": {
-        this.onPageChange(event.page);
-        return;
-      }
-      case "STEP_CHANGE": {
-        this.onStepChange(event.step, event.index);
-        return;
-      }
-      case "STEP_COMPLETE": {
-        this.onStepComplete(event.source);
-        return;
-      }
-      case "FLOW_FINISH": {
-        this.onFlowFinish();
-      }
-    }
-  }
-
-  private onPageChange(page: string) {
-    this.lifecycle.exit();
-    this.stateMachine.updatePage(page);
-    const state = this.stateMachine.getState();
-
-    if (!this.activeWorkflow || state.status !== "running") {
-      this.stateMachine.clearStep(true);
-      return;
-    }
-
-    const candidate = reconcileStep(this.activeWorkflow, page, this.getState());
-    if (!candidate) {
-      this.stateMachine.clearStep(true);
-      return;
-    }
-
-    this.dispatch({
-      type: "STEP_CHANGE",
-      step: candidate.step,
-      index: candidate.index,
-    });
-  }
-
-  private onStepChange(step: Step | null, index: number | null) {
-    if (!step || typeof index !== "number") {
-      this.lifecycle.exit();
-      this.stateMachine.clearStep(true);
-      return;
-    }
-
-    this.stateMachine.setStep(step, index);
-    if (this.activeWorkflow?.steps) {
-      backfillCompletion(this.activeWorkflow.steps, index);
-    }
-
-    const validation = this.lifecycle.validate(step, {
-      currentPage: this.stateMachine.getState().currentPage,
-      state: this.getState(),
-    });
-
-    if (!validation.valid) {
-      if (validation.reason === "element-missing") {
-        this.reportInvalidOnce(step.step, validation.reason, {
-          selectors: validation.selectors,
-        });
-      } else if (validation.reason !== "page-mismatch") {
-        this.reportInvalidOnce(step.step, validation.reason);
-      }
-      return;
-    }
-
-    this.lastInvalidKey = null;
-    this.lifecycle.enter(step, validation.element, {
-      bindClick: this.behavior.shouldBindClick(step),
-      showConfirm: this.behavior.shouldShowConfirm(step),
-      onAdvance: () => this.dispatch({ type: "STEP_COMPLETE", source: "user" }),
-    });
-
-    this.config.onStepChange?.(step);
-    this.logDebug("step change", step);
-
-    if (this.behavior.canAutoNext(step)) {
-      queueMicrotask(() => {
-        this.dispatch({ type: "STEP_COMPLETE", source: "auto" });
-      });
-    }
-  }
-
-  private onStepComplete(source: "user" | "auto") {
+  completeStep(stepId: number, stepComplete?: StepCompletePayload) {
     const state = this.stateMachine.getState();
     if (!this.activeWorkflow || state.status !== "running" || !state.currentStep) {
       return;
     }
-    if (!this.behavior.allowAdvance(state.currentStep, source)) {
+
+    if (state.currentStep.step !== stepId || state.currentStep.status === "completed") {
       return;
     }
 
+    const behaviorEvent = stepComplete?.event;
+    if (behaviorEvent?.source === "route" && typeof behaviorEvent.pathname === "string") {
+      this.stateMachine.updatePage(behaviorEvent.pathname);
+    }
+
+    this.clearElementRetry();
     state.currentStep.status = "completed";
     this.lifecycle.exit();
 
@@ -186,20 +125,103 @@ export class FlowPilotRuntime {
         typeof state.currentStepIndex === "number" &&
         this.activeWorkflow.steps.length > state.currentStepIndex + 1;
       if (hasRemainingSteps) {
-        // No eligible step on the current page/state yet.
-        // Keep the flow running and wait for PAGE_CHANGE reconciliation.
         this.stateMachine.clearStep(true);
         return;
       }
-      this.dispatch({ type: "FLOW_FINISH" });
+
+      this.onFlowFinish();
       return;
     }
 
-    this.dispatch({ type: "STEP_CHANGE", step: next.step, index: next.index });
+    this.onStepChange(next.step, next.index);
+  }
+
+  private onPageChange(page: string) {
+    this.stateMachine.updatePage(page);
+
+    const state = this.stateMachine.getState();
+    if (!this.activeWorkflow || state.status !== "running") {
+      this.stateMachine.clearStep(true);
+      this.lifecycle.exit();
+      this.behaviorEngine.deactivate();
+      return;
+    }
+
+    if (state.currentStep && typeof state.currentStepIndex === "number") {
+      const stillEligible = isStepEligible(state.currentStep, {
+        currentPage: page,
+        state: this.getState(),
+      });
+
+      if (stillEligible) {
+        this.onStepChange(state.currentStep, state.currentStepIndex);
+        return;
+      }
+    }
+
+    const candidate = reconcileStep(this.activeWorkflow, page, this.getState());
+    if (!candidate) {
+      this.stateMachine.clearStep(true);
+      this.lifecycle.exit();
+      this.behaviorEngine.deactivate();
+      return;
+    }
+
+    this.onStepChange(candidate.step, candidate.index);
+  }
+
+  private onStepChange(step: Step | null, index: number | null) {
+    if (!step || typeof index !== "number") {
+      this.clearElementRetry();
+      this.lifecycle.exit();
+      this.behaviorEngine.deactivate();
+      this.stateMachine.clearStep(true);
+      return;
+    }
+
+    const state = this.stateMachine.getState();
+    const isSameStep =
+      state.currentStep?.step === step.step && state.currentStepIndex === index;
+
+    if (!isSameStep) {
+      this.stateMachine.setStep(step, index);
+      if (this.activeWorkflow?.steps) {
+        backfillCompletion(this.activeWorkflow.steps, index);
+      }
+      this.config.onStepChange?.(step);
+      this.logDebug("step change", step);
+    }
+
+    const validation = this.lifecycle.validate(step, {
+      currentPage: this.stateMachine.getState().currentPage,
+      state: this.getState(),
+    });
+
+    if (isValidationFailure(validation)) {
+      if (validation.reason === "element-missing") {
+        this.reportInvalidOnce(step.step, validation.reason, {
+          selectors: validation.selectors,
+        });
+        this.scheduleElementRetry(step, index);
+      } else if (validation.reason !== "page-mismatch") {
+        this.reportInvalidOnce(step.step, validation.reason);
+        this.clearElementRetry();
+      } else {
+        this.clearElementRetry();
+      }
+      this.lifecycle.exit();
+      return;
+    }
+
+    this.clearElementRetry();
+    this.lastInvalidKey = null;
+    this.lifecycle.enter(step, validation.element);
+    this.behaviorEngine.activate(step.step);
   }
 
   private onFlowFinish() {
     this.lifecycle.exit();
+    this.behaviorEngine.deactivate();
     this.stateMachine.finish();
     this.stateMachine.clearStep(true);
     this.config.onFinish?.();
@@ -224,6 +246,7 @@ export class FlowPilotRuntime {
       );
       return;
     }
+
     if (reason === "state-mismatch") {
       this.handleError(new Error("Step state does not match current state"));
     }
@@ -255,5 +278,49 @@ export class FlowPilotRuntime {
   private handleError(error: Error) {
     console.error("[FlowPilot]", error);
     this.config.onError?.(error);
+  }
+
+  private clearElementRetry() {
+    if (this.elementRetryTimer !== null) {
+      if (typeof window !== "undefined") {
+        window.clearTimeout(this.elementRetryTimer);
+      } else {
+        clearTimeout(this.elementRetryTimer);
+      }
+      this.elementRetryTimer = null;
+    }
+    this.elementRetryAttempts = 0;
+    this.elementRetryStepId = null;
+  }
+
+  private scheduleElementRetry(step: Step, index: number) {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (this.elementRetryStepId !== step.step) {
+      this.elementRetryStepId = step.step;
+      this.elementRetryAttempts = 0;
+    }
+
+    if (this.elementRetryAttempts >= 20 || this.elementRetryTimer !== null) {
+      return;
+    }
+
+    this.elementRetryAttempts += 1;
+    this.elementRetryTimer = window.setTimeout(() => {
+      this.elementRetryTimer = null;
+      const state = this.stateMachine.getState();
+      if (!this.activeWorkflow || state.status !== "running") {
+        return;
+      }
+      if (!state.currentStep || typeof state.currentStepIndex !== "number") {
+        return;
+      }
+      if (state.currentStep.step !== step.step || state.currentStepIndex !== index) {
+        return;
+      }
+      this.onStepChange(state.currentStep, state.currentStepIndex);
+    }, 80);
   }
 }

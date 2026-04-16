@@ -1,4 +1,4 @@
-# API
+﻿# API
 
 ## FlowPilot.version
 
@@ -22,9 +22,7 @@ SDK version string.
 
 Start a workflow by id.
 
-## FlowPilot.next()
-
-Advance to the next step.
+Behavior events are detected automatically by the SDK bridge layer (`click`, `form submit`, `route`, `network success`).
 
 ## FlowPilot.reset()
 
@@ -33,3 +31,4 @@ Reset current flow state.
 ## FlowPilot.destroy()
 
 Destroy runtime and remove Shadow DOM.
+

@@ -1,19 +1,25 @@
-﻿import type { MappingRegistry, Step } from "../types";
+import type { MappingRegistry, Step } from "../types";
 import { resolveElement, resolvePages } from "../mapping/resolver";
 import { pageMatches, stateMatches } from "./stepEngine";
 import { GuideRuntime } from "./ui";
 
-export type ValidationResult =
-  | {
-      valid: true;
-      element: Element;
-      selectors: string[];
-    }
-  | {
-      valid: false;
-      reason: "page-mismatch" | "state-mismatch" | "element-missing";
-      selectors?: string[];
-    };
+export type ValidationSuccess = {
+  valid: true;
+  element: Element;
+  selectors: string[];
+};
+
+export type ValidationFailure = {
+  valid: false;
+  reason: "page-mismatch" | "state-mismatch" | "element-missing";
+  selectors?: string[];
+};
+
+export type ValidationResult = ValidationSuccess | ValidationFailure;
+
+export const isValidationFailure = (
+  result: ValidationResult
+): result is ValidationFailure => !result.valid;
 
 type ValidationContext = {
   currentPage?: string;
@@ -21,18 +27,19 @@ type ValidationContext = {
 };
 
 type EnterOptions = {
-  bindClick: boolean;
-  showConfirm: boolean;
-  onAdvance?: () => void;
+  showNext?: boolean;
+  onNext?: () => void;
 };
 
 export class StepLifecycle {
   private ui: GuideRuntime;
   private mapping?: MappingRegistry;
-  private clickTarget: Element | null = null;
-  private clickHandler: ((event: Event) => void) | null = null;
 
-  constructor(ui: GuideRuntime, mapping?: MappingRegistry) {
+  constructor(
+    ui: GuideRuntime,
+    mapping: MappingRegistry | undefined,
+    _legacyBehavior?: unknown
+  ) {
     this.ui = ui;
     this.mapping = mapping;
   }
@@ -63,47 +70,23 @@ export class StepLifecycle {
     return { valid: true, element, selectors };
   }
 
-  enter(step: Step, element: Element | null, options: EnterOptions) {
+  enter(step: Step, element: Element | null, options?: EnterOptions) {
+    this.exit();
+
     this.ui.render(element, {
       message: step.action || "",
       reason: step.desc || "",
-      showNext: options.showConfirm,
-      onNext: options.showConfirm ? options.onAdvance : undefined,
+      showNext: options?.showNext,
+      onNext: options?.onNext,
     });
-
-    if (!element || !options.bindClick) {
-      this.detachListener();
-      return;
-    }
-
-    if (this.clickTarget === element && this.clickHandler) {
-      return;
-    }
-
-    this.detachListener();
-    const handler = () => {
-      options.onAdvance?.();
-    };
-    element.addEventListener("click", handler, { once: true });
-    this.clickTarget = element;
-    this.clickHandler = handler;
   }
 
   exit() {
-    this.detachListener();
     this.ui.clear();
   }
 
   destroy() {
     this.exit();
     this.ui.destroy();
-  }
-
-  private detachListener() {
-    if (this.clickTarget && this.clickHandler) {
-      this.clickTarget.removeEventListener("click", this.clickHandler);
-    }
-    this.clickTarget = null;
-    this.clickHandler = null;
   }
 }

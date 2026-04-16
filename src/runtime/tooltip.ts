@@ -47,7 +47,7 @@ export const createTooltip = (root: ShadowRoot) => {
       const btn = document.createElement("button");
       btn.className = "fp-tooltip-action";
       btn.type = "button";
-      btn.textContent = "我已填写，继续";
+      btn.textContent = "I have filled it";
       btn.addEventListener("click", options.onNext, { once: true });
       tooltip.appendChild(btn);
     }

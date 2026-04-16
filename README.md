@@ -175,11 +175,7 @@ FlowPilot.init(config)
 FlowPilot.start(taskId)
 ```
 
-### next
-
-```js
-FlowPilot.next()
-```
+Behavior events are auto-captured by SDK bridge layer (`click`, `form submit`, `route`, `network success`), no manual emit required.
 
 ### reset
 
@@ -207,11 +203,15 @@ FlowPilot.destroy()
 
 FlowPilot = Workflow + Mapping + Runtime
 
+> Behavior Engine 是唯一的“行为判定层”，Runtime 只负责状态推进，不参与行为判断。
+
 ---
 
 ## License
 
 MIT
+
+
 
 
 

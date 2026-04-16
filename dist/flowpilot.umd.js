@@ -2,6 +2,252 @@
   typeof exports === "object" && typeof module !== "undefined" ? module.exports = factory() : typeof define === "function" && define.amd ? define(factory) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, global.FlowPilot = factory());
 })(this, function() {
   "use strict";
+  const initClickBridge = (eventBus2) => {
+    if (typeof document === "undefined") {
+      return () => {
+      };
+    }
+    const handler = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const guideNode = target.closest("[data-guide-id]");
+      if (!guideNode) {
+        return;
+      }
+      const guideId = guideNode.getAttribute("data-guide-id");
+      if (!guideId) {
+        return;
+      }
+      const eventPayload = {
+        source: "click",
+        guideId,
+        timestamp: Date.now()
+      };
+      eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
+    };
+    document.addEventListener("click", handler, true);
+    return () => {
+      document.removeEventListener("click", handler, true);
+    };
+  };
+  const serializeFormData = (form) => {
+    const formData = new FormData(form);
+    const output = {};
+    formData.forEach((value, key) => {
+      if (key in output) {
+        const current = output[key];
+        output[key] = Array.isArray(current) ? [...current, value] : [current, value];
+        return;
+      }
+      output[key] = value;
+    });
+    return output;
+  };
+  const initFormBridge = (eventBus2) => {
+    if (typeof document === "undefined") {
+      return () => {
+      };
+    }
+    const resolveGuideForm = (target) => {
+      if (!(target instanceof Element)) {
+        return null;
+      }
+      const form = target instanceof HTMLFormElement ? target : target.closest("form");
+      if (!(form instanceof HTMLFormElement)) {
+        return null;
+      }
+      const guideNode = form.closest("[data-guide-id]");
+      if (!guideNode) {
+        return null;
+      }
+      const guideId = guideNode.getAttribute("data-guide-id");
+      if (!guideId) {
+        return null;
+      }
+      return { form, guideId };
+    };
+    const emitFormEvent = (event) => {
+      const resolved = resolveGuideForm(event.target);
+      if (!resolved) {
+        return;
+      }
+      const { form, guideId } = resolved;
+      const eventPayload = {
+        source: "form",
+        guideId,
+        formData: serializeFormData(form),
+        timestamp: Date.now()
+      };
+      eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
+    };
+    const onSubmit = (event) => {
+      emitFormEvent(event);
+    };
+    const onInput = (event) => {
+      emitFormEvent(event);
+    };
+    const onChange = (event) => {
+      emitFormEvent(event);
+    };
+    document.addEventListener("submit", onSubmit, true);
+    document.addEventListener("input", onInput, true);
+    document.addEventListener("change", onChange, true);
+    return () => {
+      document.removeEventListener("submit", onSubmit, true);
+      document.removeEventListener("input", onInput, true);
+      document.removeEventListener("change", onChange, true);
+    };
+  };
+  const buildRouteEvent = () => ({
+    source: "route",
+    pathname: window.location.pathname,
+    timestamp: Date.now()
+  });
+  const initRouteBridge = (eventBus2) => {
+    if (typeof window === "undefined") {
+      return () => {
+      };
+    }
+    const emitRouteChange = () => {
+      eventBus2.emit("BEHAVIOR_EVENT", buildRouteEvent());
+    };
+    const onPopState = () => emitRouteChange();
+    const onHashChange = () => emitRouteChange();
+    window.addEventListener("popstate", onPopState);
+    window.addEventListener("hashchange", onHashChange);
+    const originalPushState = history.pushState.bind(history);
+    const originalReplaceState = history.replaceState.bind(history);
+    history.pushState = (...args) => {
+      const result = originalPushState(...args);
+      emitRouteChange();
+      return result;
+    };
+    history.replaceState = (...args) => {
+      const result = originalReplaceState(...args);
+      emitRouteChange();
+      return result;
+    };
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      window.removeEventListener("hashchange", onHashChange);
+      history.pushState = originalPushState;
+      history.replaceState = originalReplaceState;
+    };
+  };
+  const inferFetchMethod = (input, init2) => {
+    if (init2 == null ? void 0 : init2.method) {
+      return init2.method.toUpperCase();
+    }
+    if (typeof Request !== "undefined" && input instanceof Request) {
+      return (input.method || "GET").toUpperCase();
+    }
+    return "GET";
+  };
+  const inferFetchUrl = (input) => {
+    if (typeof input === "string") {
+      return input;
+    }
+    if (input instanceof URL) {
+      return input.toString();
+    }
+    if (typeof Request !== "undefined" && input instanceof Request) {
+      return input.url;
+    }
+    return "";
+  };
+  const initNetworkBridge = (eventBus2) => {
+    var _a, _b;
+    if (typeof window === "undefined") {
+      return () => {
+      };
+    }
+    const cleanups = [];
+    if (typeof window.fetch === "function") {
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init2) => {
+        const response = await originalFetch(input, init2);
+        const eventPayload = {
+          source: "fetch",
+          url: response.url || inferFetchUrl(input),
+          method: inferFetchMethod(input, init2),
+          status: response.status,
+          ok: response.ok,
+          timestamp: Date.now()
+        };
+        eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
+        return response;
+      };
+      cleanups.push(() => {
+        window.fetch = originalFetch;
+      });
+    }
+    const axios = window.axios;
+    if ((_b = (_a = axios == null ? void 0 : axios.interceptors) == null ? void 0 : _a.response) == null ? void 0 : _b.use) {
+      const interceptorId = axios.interceptors.response.use((response) => {
+        var _a2, _b2;
+        const status = Number((response == null ? void 0 : response.status) || 0);
+        const eventPayload = {
+          source: "fetch",
+          url: ((_a2 = response == null ? void 0 : response.config) == null ? void 0 : _a2.url) || "",
+          method: String(((_b2 = response == null ? void 0 : response.config) == null ? void 0 : _b2.method) || "GET").toUpperCase(),
+          status,
+          ok: status >= 200 && status < 300,
+          timestamp: Date.now()
+        };
+        eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
+        return response;
+      });
+      cleanups.push(() => {
+        var _a2, _b2, _c;
+        (_c = (_b2 = (_a2 = axios.interceptors) == null ? void 0 : _a2.response) == null ? void 0 : _b2.eject) == null ? void 0 : _c.call(_b2, interceptorId);
+      });
+    }
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  };
+  const initBehaviorBridge = (eventBus2) => {
+    const cleanups = [
+      initClickBridge(eventBus2),
+      initFormBridge(eventBus2),
+      initRouteBridge(eventBus2),
+      initNetworkBridge(eventBus2)
+    ];
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  };
+  class EventBus {
+    constructor() {
+      this.listeners = /* @__PURE__ */ new Map();
+    }
+    on(event, handler) {
+      const set = this.listeners.get(event) ?? /* @__PURE__ */ new Set();
+      set.add(handler);
+      this.listeners.set(event, set);
+      return () => this.off(event, handler);
+    }
+    off(event, handler) {
+      const set = this.listeners.get(event);
+      if (!set) {
+        return;
+      }
+      set.delete(handler);
+      if (set.size === 0) {
+        this.listeners.delete(event);
+      }
+    }
+    emit(event, payload) {
+      const set = this.listeners.get(event);
+      if (!set) {
+        return;
+      }
+      set.forEach((handler) => handler(payload));
+    }
+  }
+  const eventBus = new EventBus();
   const mountShadowRoot = () => {
     const existing = document.getElementById("flowpilot-root");
     if (existing && existing.shadowRoot) {
@@ -12,51 +258,186 @@
     document.body.appendChild(host);
     return host.attachShadow({ mode: "open" });
   };
-  class StepBehaviorEngine {
-    getType(step) {
-      if (step.type) {
-        return step.type;
-      }
-      if (step.form && step.form.length) {
-        return "form";
-      }
-      return "click";
+  const normalizePathname = (path = "") => {
+    const hashIndex = path.indexOf("#");
+    const queryIndex = path.indexOf("?");
+    const cutIndex = hashIndex === -1 ? queryIndex : queryIndex === -1 ? hashIndex : Math.min(hashIndex, queryIndex);
+    return cutIndex === -1 ? path : path.slice(0, cutIndex);
+  };
+  class BehaviorEngine {
+    constructor(eventBus2) {
+      this.behaviors = /* @__PURE__ */ new Map();
+      this.activeStepId = null;
+      this.completedSteps = /* @__PURE__ */ new Set();
+      this.detachBehaviorListener = null;
+      this.eventBus = eventBus2;
+      this.bindBehaviorEvent();
     }
-    canAutoNext(step) {
-      const type = this.getType(step);
-      if (type === "form" || type === "view" || type === "route") {
-        return false;
-      }
-      return Boolean(step.autoNext);
+    register(stepId, behavior, guideId = "") {
+      this.behaviors.set(stepId, {
+        stepId,
+        guideId,
+        behavior
+      });
     }
-    shouldWaitUser(step) {
-      const type = this.getType(step);
-      if (type === "view") {
-        return true;
-      }
-      if (type === "form") {
-        return true;
-      }
-      return Boolean(step.requireConfirm);
+    registerStep(step) {
+      this.register(step.step, this.resolveBehavior(step), step.highlight || "");
     }
-    shouldBindClick(step) {
-      return this.getType(step) === "click";
-    }
-    shouldTrackRoute(step) {
-      return this.getType(step) === "route" || Boolean(step.waitForStable);
-    }
-    shouldShowConfirm(step) {
-      return this.getType(step) === "form" && Boolean(step.requireConfirm);
-    }
-    allowAdvance(step, source) {
-      const type = this.getType(step);
-      if (type === "view") {
-        return false;
+    activate(stepId) {
+      const step = this.behaviors.get(stepId);
+      if (!step) {
+        this.activeStepId = null;
+        return;
       }
-      if (source === "auto") {
-        return this.canAutoNext(step);
+      this.activeStepId = stepId;
+    }
+    deactivate() {
+      this.activeStepId = null;
+    }
+    shouldShowConfirm(_stepId) {
+      return false;
+    }
+    reset() {
+      this.deactivate();
+      this.behaviors.clear();
+      this.completedSteps.clear();
+    }
+    destroy() {
+      if (this.detachBehaviorListener) {
+        this.detachBehaviorListener();
+        this.detachBehaviorListener = null;
       }
-      return true;
+      this.reset();
+    }
+    bindBehaviorEvent() {
+      this.detachBehaviorListener = this.eventBus.on(
+        "BEHAVIOR_EVENT",
+        (event) => {
+          var _a;
+          console.log("[FlowPilot Event]", event);
+          const current = this.getCurrentStep();
+          if (!current) {
+            return;
+          }
+          const validator = (_a = current.behavior.completion) == null ? void 0 : _a.validator;
+          if (!validator || validator(event)) {
+            this.complete(current, event);
+          }
+        }
+      );
+    }
+    getCurrentStep() {
+      if (this.activeStepId === null) {
+        return null;
+      }
+      const current = this.behaviors.get(this.activeStepId);
+      if (!current) {
+        return null;
+      }
+      if (this.completedSteps.has(current.stepId)) {
+        return null;
+      }
+      return current;
+    }
+    complete(step, event) {
+      if (this.completedSteps.has(step.stepId)) {
+        return;
+      }
+      this.completedSteps.add(step.stepId);
+      this.eventBus.emit("STEP_COMPLETE", {
+        stepId: step.stepId,
+        event
+      });
+    }
+    resolveBehavior(step) {
+      if (step.behavior) {
+        return step.behavior;
+      }
+      if (step.type === "route") {
+        return {
+          type: "route",
+          completion: {
+            type: "event",
+            validator: (event) => {
+              if (event.source !== "route") {
+                return false;
+              }
+              if (!step.page) {
+                return true;
+              }
+              if (step.page.includes("?") || step.page.includes("#")) {
+                return event.pathname === step.page;
+              }
+              return normalizePathname(event.pathname || "") === step.page;
+            }
+          }
+        };
+      }
+      if (step.type === "form" || Boolean(step.form && step.form.length)) {
+        const requiredFields = step.form || [];
+        return {
+          type: "form",
+          completion: {
+            type: "state",
+            validator: (event) => {
+              if (event.source !== "form") {
+                return false;
+              }
+              if (!requiredFields.length) {
+                return true;
+              }
+              return requiredFields.every(
+                (field) => {
+                  var _a;
+                  return Boolean((_a = event.formData) == null ? void 0 : _a[field.field]);
+                }
+              );
+            }
+          }
+        };
+      }
+      return {
+        type: "click",
+        completion: {
+          type: "dom",
+          validator: (event) => {
+            if (event.source !== "click") {
+              return false;
+            }
+            if (!step.highlight) {
+              return true;
+            }
+            return event.guideId === step.highlight;
+          }
+        }
+      };
+    }
+  }
+  class BehaviorLifecycle {
+    constructor(eventBus2, runtime, engine) {
+      this.detach = null;
+      this.eventBus = eventBus2;
+      this.runtime = runtime;
+      this.engine = engine;
+    }
+    start() {
+      if (this.detach) {
+        return;
+      }
+      this.detach = this.eventBus.on(
+        "STEP_COMPLETE",
+        (event) => {
+          this.engine.deactivate();
+          this.runtime.completeStep(event.stepId, event);
+        }
+      );
+    }
+    stop() {
+      if (!this.detach) {
+        return;
+      }
+      this.detach();
+      this.detach = null;
     }
   }
   const normalizeEntry = (entry) => {
@@ -149,10 +530,9 @@
     }
     return null;
   };
+  const isValidationFailure = (result) => !result.valid;
   class StepLifecycle {
-    constructor(ui, mapping) {
-      this.clickTarget = null;
-      this.clickHandler = null;
+    constructor(ui, mapping, _legacyBehavior) {
       this.ui = ui;
       this.mapping = mapping;
     }
@@ -178,42 +558,20 @@
       return { valid: true, element, selectors };
     }
     enter(step, element, options) {
+      this.exit();
       this.ui.render(element, {
         message: step.action || "",
         reason: step.desc || "",
-        showNext: options.showConfirm,
-        onNext: options.showConfirm ? options.onAdvance : void 0
+        showNext: options == null ? void 0 : options.showNext,
+        onNext: options == null ? void 0 : options.onNext
       });
-      if (!element || !options.bindClick) {
-        this.detachListener();
-        return;
-      }
-      if (this.clickTarget === element && this.clickHandler) {
-        return;
-      }
-      this.detachListener();
-      const handler = () => {
-        var _a;
-        (_a = options.onAdvance) == null ? void 0 : _a.call(options);
-      };
-      element.addEventListener("click", handler, { once: true });
-      this.clickTarget = element;
-      this.clickHandler = handler;
     }
     exit() {
-      this.detachListener();
       this.ui.clear();
     }
     destroy() {
       this.exit();
       this.ui.destroy();
-    }
-    detachListener() {
-      if (this.clickTarget && this.clickHandler) {
-        this.clickTarget.removeEventListener("click", this.clickHandler);
-      }
-      this.clickTarget = null;
-      this.clickHandler = null;
     }
   }
   class RuntimeStateMachine {
@@ -406,7 +764,7 @@
         const btn = document.createElement("button");
         btn.className = "fp-tooltip-action";
         btn.type = "button";
-        btn.textContent = "我已填写，继续";
+        btn.textContent = "I have filled it";
         btn.addEventListener("click", options.onNext, { once: true });
         tooltip.appendChild(btn);
       }
@@ -541,6 +899,11 @@
 `;
   class GuideRuntime {
     constructor(root) {
+      this.activeElement = null;
+      this.activeOptions = {};
+      this.onGlobalUpdate = () => {
+        this.refresh();
+      };
       this.root = root;
       const style = document.createElement("style");
       style.textContent = STYLE_TEXT;
@@ -550,26 +913,40 @@
       this.tooltip = createTooltip(this.root);
       this.highlight.update(null);
       this.tooltip.update(null, { message: "", reason: "" });
+      if (typeof window !== "undefined") {
+        window.addEventListener("resize", this.onGlobalUpdate);
+        window.addEventListener("scroll", this.onGlobalUpdate, true);
+      }
+      if (typeof document !== "undefined") {
+        document.addEventListener("transitionend", this.onGlobalUpdate, true);
+        document.addEventListener("animationend", this.onGlobalUpdate, true);
+      }
     }
     render(element, options = {}) {
-      if (!element) {
-        this.clear();
-        return;
-      }
-      const rect = element.getBoundingClientRect();
-      this.highlight.update(rect);
-      this.tooltip.update(rect, {
+      this.activeElement = element;
+      this.activeOptions = {
         message: options.message || "",
         reason: options.reason || "",
         showNext: options.showNext,
         onNext: options.onNext
-      });
+      };
+      this.refresh();
     }
     clear() {
+      this.activeElement = null;
+      this.activeOptions = {};
       this.highlight.update(null);
       this.tooltip.update(null, { message: "", reason: "" });
     }
     destroy() {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("resize", this.onGlobalUpdate);
+        window.removeEventListener("scroll", this.onGlobalUpdate, true);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("transitionend", this.onGlobalUpdate, true);
+        document.removeEventListener("animationend", this.onGlobalUpdate, true);
+      }
       this.clear();
       this.highlight.destroy();
       this.tooltip.destroy();
@@ -577,40 +954,51 @@
         this.style.parentNode.removeChild(this.style);
       }
     }
+    refresh() {
+      if (!this.activeElement || !this.activeElement.isConnected) {
+        this.highlight.update(null);
+        this.tooltip.update(null, { message: "", reason: "" });
+        return;
+      }
+      const rect = this.activeElement.getBoundingClientRect();
+      this.highlight.update(rect);
+      this.tooltip.update(rect, {
+        message: this.activeOptions.message || "",
+        reason: this.activeOptions.reason || "",
+        showNext: this.activeOptions.showNext,
+        onNext: this.activeOptions.onNext
+      });
+    }
   }
   class PageWatcher {
     constructor(options) {
-      this.intervalId = null;
+      this.started = false;
       this.patched = false;
       this.handleNavigation = () => {
         this.checkPage(true);
       };
       this.getCurrentPage = options.getCurrentPage;
       this.onChange = options.onChange;
-      this.intervalMs = options.intervalMs ?? 500;
       this.lastPage = this.getCurrentPage();
     }
     start() {
-      if (typeof window === "undefined" || this.intervalId !== null) {
+      if (typeof window === "undefined" || this.started) {
         return;
       }
+      this.started = true;
       this.lastPage = this.getCurrentPage();
       window.addEventListener("popstate", this.handleNavigation);
+      window.addEventListener("hashchange", this.handleNavigation);
       this.patchHistory();
-      this.intervalId = window.setInterval(() => {
-        this.checkPage();
-      }, this.intervalMs);
     }
     stop() {
-      if (typeof window === "undefined") {
+      if (typeof window === "undefined" || !this.started) {
         return;
       }
+      this.started = false;
       window.removeEventListener("popstate", this.handleNavigation);
+      window.removeEventListener("hashchange", this.handleNavigation);
       this.restoreHistory();
-      if (this.intervalId !== null) {
-        window.clearInterval(this.intervalId);
-        this.intervalId = null;
-      }
     }
     checkPage(force = false) {
       const current = this.getCurrentPage();
@@ -628,13 +1016,13 @@
       history.pushState = (...args) => {
         var _a;
         const result = (_a = this.originalPushState) == null ? void 0 : _a.call(this, ...args);
-        this.checkPage(true);
+        this.checkPage();
         return result;
       };
       history.replaceState = (...args) => {
         var _a;
         const result = (_a = this.originalReplaceState) == null ? void 0 : _a.call(this, ...args);
-        this.checkPage(true);
+        this.checkPage();
         return result;
       };
       this.patched = true;
@@ -665,18 +1053,30 @@
     return { getCurrentPage };
   };
   class FlowPilotRuntime {
-    constructor(config, root) {
+    constructor(config, root, eventBus2) {
       this.activeWorkflow = null;
       this.lastInvalidKey = null;
+      this.elementRetryTimer = null;
+      this.elementRetryAttempts = 0;
+      this.elementRetryStepId = null;
       this.config = config;
       this.adapter = createRuntimeAdapter(config);
       this.ui = new GuideRuntime(root);
       this.lifecycle = new StepLifecycle(this.ui, config.mapping);
-      this.behavior = new StepBehaviorEngine();
       this.stateMachine = new RuntimeStateMachine(this.adapter.getCurrentPage());
+      this.eventBus = eventBus2 ?? new EventBus();
+      this.behaviorEngine = new BehaviorEngine(this.eventBus);
+      this.behaviorLifecycle = new BehaviorLifecycle(
+        this.eventBus,
+        this,
+        this.behaviorEngine
+      );
+      this.behaviorLifecycle.start();
       this.watcher = new PageWatcher({
         getCurrentPage: () => this.adapter.getCurrentPage(),
-        onChange: (page) => this.dispatch({ type: "PAGE_CHANGE", page })
+        onChange: (page) => {
+          this.onPageChange(page);
+        }
       });
     }
     start(taskId) {
@@ -689,19 +1089,23 @@
         this.handleError(new Error("Workflow has no steps"));
         return;
       }
+      this.behaviorEngine.reset();
+      workflow.steps.forEach((step) => {
+        step.status = "pending";
+        this.behaviorEngine.registerStep(step);
+      });
       this.lifecycle.exit();
       this.lastInvalidKey = null;
       this.activeWorkflow = workflow;
       const currentPage = this.adapter.getCurrentPage();
       this.stateMachine.start(taskId, currentPage);
       this.watcher.start();
-      this.dispatch({ type: "PAGE_CHANGE", page: currentPage });
-    }
-    next() {
-      this.dispatch({ type: "STEP_COMPLETE", source: "user" });
+      this.onPageChange(currentPage);
     }
     reset() {
+      this.clearElementRetry();
       this.lifecycle.exit();
+      this.behaviorEngine.reset();
       this.watcher.stop();
       this.activeWorkflow = null;
       this.lastInvalidKey = null;
@@ -709,113 +1113,115 @@
     }
     destroy() {
       this.reset();
+      this.behaviorLifecycle.stop();
+      this.behaviorEngine.destroy();
       this.lifecycle.destroy();
     }
-    dispatch(event) {
-      switch (event.type) {
-        case "PAGE_CHANGE": {
-          this.onPageChange(event.page);
-          return;
-        }
-        case "STEP_CHANGE": {
-          this.onStepChange(event.step, event.index);
-          return;
-        }
-        case "STEP_COMPLETE": {
-          this.onStepComplete(event.source);
-          return;
-        }
-        case "FLOW_FINISH": {
-          this.onFlowFinish();
-        }
-      }
-    }
-    onPageChange(page) {
-      this.lifecycle.exit();
-      this.stateMachine.updatePage(page);
-      const state2 = this.stateMachine.getState();
-      if (!this.activeWorkflow || state2.status !== "running") {
-        this.stateMachine.clearStep(true);
-        return;
-      }
-      const candidate = reconcileStep(this.activeWorkflow, page, this.getState());
-      if (!candidate) {
-        this.stateMachine.clearStep(true);
-        return;
-      }
-      this.dispatch({
-        type: "STEP_CHANGE",
-        step: candidate.step,
-        index: candidate.index
-      });
-    }
-    onStepChange(step, index) {
-      var _a, _b, _c;
-      if (!step || typeof index !== "number") {
-        this.lifecycle.exit();
-        this.stateMachine.clearStep(true);
-        return;
-      }
-      this.stateMachine.setStep(step, index);
-      if ((_a = this.activeWorkflow) == null ? void 0 : _a.steps) {
-        backfillCompletion(this.activeWorkflow.steps, index);
-      }
-      const validation = this.lifecycle.validate(step, {
-        currentPage: this.stateMachine.getState().currentPage,
-        state: this.getState()
-      });
-      if (!validation.valid) {
-        if (validation.reason === "element-missing") {
-          this.reportInvalidOnce(step.step, validation.reason, {
-            selectors: validation.selectors
-          });
-        } else if (validation.reason !== "page-mismatch") {
-          this.reportInvalidOnce(step.step, validation.reason);
-        }
-        return;
-      }
-      this.lastInvalidKey = null;
-      this.lifecycle.enter(step, validation.element, {
-        bindClick: this.behavior.shouldBindClick(step),
-        showConfirm: this.behavior.shouldShowConfirm(step),
-        onAdvance: () => this.dispatch({ type: "STEP_COMPLETE", source: "user" })
-      });
-      (_c = (_b = this.config).onStepChange) == null ? void 0 : _c.call(_b, step);
-      this.logDebug("step change", step);
-      if (this.behavior.canAutoNext(step)) {
-        queueMicrotask(() => {
-          this.dispatch({ type: "STEP_COMPLETE", source: "auto" });
-        });
-      }
-    }
-    onStepComplete(source) {
+    completeStep(stepId, stepComplete) {
       const state2 = this.stateMachine.getState();
       if (!this.activeWorkflow || state2.status !== "running" || !state2.currentStep) {
         return;
       }
-      if (!this.behavior.allowAdvance(state2.currentStep, source)) {
+      if (state2.currentStep.step !== stepId || state2.currentStep.status === "completed") {
         return;
       }
+      const behaviorEvent = stepComplete == null ? void 0 : stepComplete.event;
+      if ((behaviorEvent == null ? void 0 : behaviorEvent.source) === "route" && typeof behaviorEvent.pathname === "string") {
+        this.stateMachine.updatePage(behaviorEvent.pathname);
+      }
+      this.clearElementRetry();
       state2.currentStep.status = "completed";
       this.lifecycle.exit();
-      const next2 = findNextStep(this.activeWorkflow, state2.currentStepIndex, {
+      const next = findNextStep(this.activeWorkflow, state2.currentStepIndex, {
         currentPage: state2.currentPage,
         state: this.getState()
       });
-      if (!next2) {
+      if (!next) {
         const hasRemainingSteps = typeof state2.currentStepIndex === "number" && this.activeWorkflow.steps.length > state2.currentStepIndex + 1;
         if (hasRemainingSteps) {
           this.stateMachine.clearStep(true);
           return;
         }
-        this.dispatch({ type: "FLOW_FINISH" });
+        this.onFlowFinish();
         return;
       }
-      this.dispatch({ type: "STEP_CHANGE", step: next2.step, index: next2.index });
+      this.onStepChange(next.step, next.index);
+    }
+    onPageChange(page) {
+      this.stateMachine.updatePage(page);
+      const state2 = this.stateMachine.getState();
+      if (!this.activeWorkflow || state2.status !== "running") {
+        this.stateMachine.clearStep(true);
+        this.lifecycle.exit();
+        this.behaviorEngine.deactivate();
+        return;
+      }
+      if (state2.currentStep && typeof state2.currentStepIndex === "number") {
+        const stillEligible = isStepEligible(state2.currentStep, {
+          currentPage: page,
+          state: this.getState()
+        });
+        if (stillEligible) {
+          this.onStepChange(state2.currentStep, state2.currentStepIndex);
+          return;
+        }
+      }
+      const candidate = reconcileStep(this.activeWorkflow, page, this.getState());
+      if (!candidate) {
+        this.stateMachine.clearStep(true);
+        this.lifecycle.exit();
+        this.behaviorEngine.deactivate();
+        return;
+      }
+      this.onStepChange(candidate.step, candidate.index);
+    }
+    onStepChange(step, index) {
+      var _a, _b, _c, _d;
+      if (!step || typeof index !== "number") {
+        this.clearElementRetry();
+        this.lifecycle.exit();
+        this.behaviorEngine.deactivate();
+        this.stateMachine.clearStep(true);
+        return;
+      }
+      const state2 = this.stateMachine.getState();
+      const isSameStep = ((_a = state2.currentStep) == null ? void 0 : _a.step) === step.step && state2.currentStepIndex === index;
+      if (!isSameStep) {
+        this.stateMachine.setStep(step, index);
+        if ((_b = this.activeWorkflow) == null ? void 0 : _b.steps) {
+          backfillCompletion(this.activeWorkflow.steps, index);
+        }
+        (_d = (_c = this.config).onStepChange) == null ? void 0 : _d.call(_c, step);
+        this.logDebug("step change", step);
+      }
+      const validation = this.lifecycle.validate(step, {
+        currentPage: this.stateMachine.getState().currentPage,
+        state: this.getState()
+      });
+      if (isValidationFailure(validation)) {
+        if (validation.reason === "element-missing") {
+          this.reportInvalidOnce(step.step, validation.reason, {
+            selectors: validation.selectors
+          });
+          this.scheduleElementRetry(step, index);
+        } else if (validation.reason !== "page-mismatch") {
+          this.reportInvalidOnce(step.step, validation.reason);
+          this.clearElementRetry();
+        } else {
+          this.clearElementRetry();
+        }
+        this.lifecycle.exit();
+        return;
+      }
+      this.clearElementRetry();
+      this.lastInvalidKey = null;
+      this.lifecycle.enter(step, validation.element);
+      this.behaviorEngine.activate(step.step);
     }
     onFlowFinish() {
       var _a, _b;
       this.lifecycle.exit();
+      this.behaviorEngine.deactivate();
       this.stateMachine.finish();
       this.stateMachine.clearStep(true);
       (_b = (_a = this.config).onFinish) == null ? void 0 : _b.call(_a);
@@ -861,6 +1267,45 @@
       var _a, _b;
       console.error("[FlowPilot]", error);
       (_b = (_a = this.config).onError) == null ? void 0 : _b.call(_a, error);
+    }
+    clearElementRetry() {
+      if (this.elementRetryTimer !== null) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(this.elementRetryTimer);
+        } else {
+          clearTimeout(this.elementRetryTimer);
+        }
+        this.elementRetryTimer = null;
+      }
+      this.elementRetryAttempts = 0;
+      this.elementRetryStepId = null;
+    }
+    scheduleElementRetry(step, index) {
+      if (typeof window === "undefined") {
+        return;
+      }
+      if (this.elementRetryStepId !== step.step) {
+        this.elementRetryStepId = step.step;
+        this.elementRetryAttempts = 0;
+      }
+      if (this.elementRetryAttempts >= 20 || this.elementRetryTimer !== null) {
+        return;
+      }
+      this.elementRetryAttempts += 1;
+      this.elementRetryTimer = window.setTimeout(() => {
+        this.elementRetryTimer = null;
+        const state2 = this.stateMachine.getState();
+        if (!this.activeWorkflow || state2.status !== "running") {
+          return;
+        }
+        if (!state2.currentStep || typeof state2.currentStepIndex !== "number") {
+          return;
+        }
+        if (state2.currentStep.step !== step.step || state2.currentStepIndex !== index) {
+          return;
+        }
+        this.onStepChange(state2.currentStep, state2.currentStepIndex);
+      }, 80);
     }
   }
   const mountChat = (root, options) => {
@@ -921,6 +1366,7 @@
     config: null,
     runtime: null,
     chat: null,
+    disposeBehaviorBridge: null,
     initialized: false
   };
   const logDebug = (...args) => {
@@ -973,7 +1419,8 @@
       onSend: (text) => start(text, true)
     });
     const runtimeConfig = wrapConfig(config);
-    state.runtime = new FlowPilotRuntime(runtimeConfig, shadowRoot);
+    state.runtime = new FlowPilotRuntime(runtimeConfig, shadowRoot, eventBus);
+    state.disposeBehaviorBridge = initBehaviorBridge(eventBus);
     state.initialized = true;
     window[GLOBAL_INIT_FLAG] = true;
     if (state.config.debug) {
@@ -997,17 +1444,14 @@
     }
     state.runtime.start(intent);
   };
-  const next = () => {
-    var _a;
-    (_a = state.runtime) == null ? void 0 : _a.next();
-  };
   const reset = () => {
     var _a;
     (_a = state.runtime) == null ? void 0 : _a.reset();
   };
   const destroy = () => {
-    var _a;
+    var _a, _b;
     (_a = state.runtime) == null ? void 0 : _a.destroy();
+    (_b = state.disposeBehaviorBridge) == null ? void 0 : _b.call(state);
     const host = document.getElementById("flowpilot-root");
     if (host && host.parentNode) {
       host.parentNode.removeChild(host);
@@ -1018,9 +1462,16 @@
     state.config = null;
     state.runtime = null;
     state.chat = null;
+    state.disposeBehaviorBridge = null;
     state.initialized = false;
   };
-  const FlowPilot = { init, start, next, reset, destroy, version: VERSION };
+  const FlowPilot = {
+    init,
+    start,
+    reset,
+    destroy,
+    version: VERSION
+  };
   if (typeof window !== "undefined") {
     window.FlowPilot = FlowPilot;
   }

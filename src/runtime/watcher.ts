@@ -1,15 +1,13 @@
-﻿type WatcherOptions = {
+type WatcherOptions = {
   getCurrentPage: () => string;
   onChange: (page: string) => void;
-  intervalMs?: number;
 };
 
 export class PageWatcher {
   private getCurrentPage: () => string;
   private onChange: (page: string) => void;
-  private intervalMs: number;
   private lastPage: string;
-  private intervalId: number | null = null;
+  private started = false;
   private patched = false;
   private originalPushState?: History["pushState"];
   private originalReplaceState?: History["replaceState"];
@@ -17,32 +15,28 @@ export class PageWatcher {
   constructor(options: WatcherOptions) {
     this.getCurrentPage = options.getCurrentPage;
     this.onChange = options.onChange;
-    this.intervalMs = options.intervalMs ?? 500;
     this.lastPage = this.getCurrentPage();
   }
 
   start() {
-    if (typeof window === "undefined" || this.intervalId !== null) {
+    if (typeof window === "undefined" || this.started) {
       return;
     }
+    this.started = true;
     this.lastPage = this.getCurrentPage();
     window.addEventListener("popstate", this.handleNavigation);
+    window.addEventListener("hashchange", this.handleNavigation);
     this.patchHistory();
-    this.intervalId = window.setInterval(() => {
-      this.checkPage();
-    }, this.intervalMs);
   }
 
   stop() {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !this.started) {
       return;
     }
+    this.started = false;
     window.removeEventListener("popstate", this.handleNavigation);
+    window.removeEventListener("hashchange", this.handleNavigation);
     this.restoreHistory();
-    if (this.intervalId !== null) {
-      window.clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
   }
 
   private handleNavigation = () => {
@@ -65,12 +59,12 @@ export class PageWatcher {
     this.originalReplaceState = history.replaceState.bind(history);
     history.pushState = (...args) => {
       const result = this.originalPushState?.(...args);
-      this.checkPage(true);
+      this.checkPage();
       return result;
     };
     history.replaceState = (...args) => {
       const result = this.originalReplaceState?.(...args);
-      this.checkPage(true);
+      this.checkPage();
       return result;
     };
     this.patched = true;

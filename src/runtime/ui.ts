@@ -137,6 +137,11 @@ export class GuideRuntime {
   private style: HTMLStyleElement;
   private highlight: ReturnType<typeof createHighlight>;
   private tooltip: ReturnType<typeof createTooltip>;
+  private activeElement: Element | null = null;
+  private activeOptions: RenderOptions = {};
+  private onGlobalUpdate = () => {
+    this.refresh();
+  };
 
   constructor(root: ShadowRoot) {
     this.root = root;
@@ -148,34 +153,66 @@ export class GuideRuntime {
     this.tooltip = createTooltip(this.root);
     this.highlight.update(null);
     this.tooltip.update(null, { message: "", reason: "" });
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", this.onGlobalUpdate);
+      window.addEventListener("scroll", this.onGlobalUpdate, true);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("transitionend", this.onGlobalUpdate, true);
+      document.addEventListener("animationend", this.onGlobalUpdate, true);
+    }
   }
 
   render(element: Element | null, options: RenderOptions = {}) {
-    if (!element) {
-      this.clear();
-      return;
-    }
-    const rect = element.getBoundingClientRect();
-    this.highlight.update(rect);
-    this.tooltip.update(rect, {
+    this.activeElement = element;
+    this.activeOptions = {
       message: options.message || "",
       reason: options.reason || "",
       showNext: options.showNext,
       onNext: options.onNext,
-    });
+    };
+    this.refresh();
   }
 
   clear() {
+    this.activeElement = null;
+    this.activeOptions = {};
     this.highlight.update(null);
     this.tooltip.update(null, { message: "", reason: "" });
   }
 
   destroy() {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("resize", this.onGlobalUpdate);
+      window.removeEventListener("scroll", this.onGlobalUpdate, true);
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("transitionend", this.onGlobalUpdate, true);
+      document.removeEventListener("animationend", this.onGlobalUpdate, true);
+    }
     this.clear();
     this.highlight.destroy();
     this.tooltip.destroy();
     if (this.style.parentNode) {
       this.style.parentNode.removeChild(this.style);
     }
+  }
+
+  private refresh() {
+    if (!this.activeElement || !this.activeElement.isConnected) {
+      this.highlight.update(null);
+      this.tooltip.update(null, { message: "", reason: "" });
+      return;
+    }
+
+    const rect = this.activeElement.getBoundingClientRect();
+    this.highlight.update(rect);
+    this.tooltip.update(rect, {
+      message: this.activeOptions.message || "",
+      reason: this.activeOptions.reason || "",
+      showNext: this.activeOptions.showNext,
+      onNext: this.activeOptions.onNext,
+    });
   }
 }

@@ -1,4 +1,6 @@
-﻿import type { InitConfig, Step, Workflow } from "./types";
+import type { InitConfig, Step, Workflow } from "./types";
+import { initBehaviorBridge } from "./behavior/bridge";
+import { eventBus } from "./behavior/eventBus";
 import { mountShadowRoot } from "./runtime/shadow";
 import { FlowPilotRuntime } from "./runtime/runtime";
 import { mountChat } from "./ui/chat";
@@ -7,6 +9,7 @@ type PluginState = {
   config: InitConfig | null;
   runtime: FlowPilotRuntime | null;
   chat: ReturnType<typeof mountChat> | null;
+  disposeBehaviorBridge: (() => void) | null;
   initialized: boolean;
 };
 
@@ -19,6 +22,7 @@ const state: PluginState = {
   config: null,
   runtime: null,
   chat: null,
+  disposeBehaviorBridge: null,
   initialized: false,
 };
 
@@ -81,7 +85,8 @@ const init = (config: InitConfig) => {
   });
 
   const runtimeConfig = wrapConfig(config);
-  state.runtime = new FlowPilotRuntime(runtimeConfig, shadowRoot);
+  state.runtime = new FlowPilotRuntime(runtimeConfig, shadowRoot, eventBus);
+  state.disposeBehaviorBridge = initBehaviorBridge(eventBus);
   state.initialized = true;
   (window as any)[GLOBAL_INIT_FLAG] = true;
 
@@ -109,16 +114,13 @@ const start = (intent: string, fromChat = false) => {
   state.runtime.start(intent);
 };
 
-const next = () => {
-  state.runtime?.next();
-};
-
 const reset = () => {
   state.runtime?.reset();
 };
 
 const destroy = () => {
   state.runtime?.destroy();
+  state.disposeBehaviorBridge?.();
   const host = document.getElementById("flowpilot-root");
   if (host && host.parentNode) {
     host.parentNode.removeChild(host);
@@ -129,10 +131,17 @@ const destroy = () => {
   state.config = null;
   state.runtime = null;
   state.chat = null;
+  state.disposeBehaviorBridge = null;
   state.initialized = false;
 };
 
-const FlowPilot = { init, start, next, reset, destroy, version: VERSION };
+const FlowPilot = {
+  init,
+  start,
+  reset,
+  destroy,
+  version: VERSION,
+};
 
 if (typeof window !== "undefined") {
   (window as any).FlowPilot = FlowPilot;

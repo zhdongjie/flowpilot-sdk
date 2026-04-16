@@ -1,3 +1,5 @@
+import type { StepBehavior } from "./behavior/types";
+
 export type FormField = {
   field: string;
   desc?: string;
@@ -11,10 +13,11 @@ export type Step = {
   page?: string;
   state?: Record<string, any>;
   form?: FormField[];
-  type?: "click" | "form" | "view" | "route";
+  type?: "click" | "form" | "route";
   autoNext?: boolean;
   requireConfirm?: boolean;
   waitForStable?: boolean;
+  behavior?: StepBehavior;
   status?: "pending" | "active" | "completed";
 };
 
