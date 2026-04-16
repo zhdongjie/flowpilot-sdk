@@ -1,27 +1,22 @@
-import type { InitConfig, Step, Workflow } from "./types";
+import type { InitConfig, Workflow } from "./types";
 import { initBehaviorBridge } from "./behavior/bridge";
 import { eventBus } from "./behavior/eventBus";
 import { mountShadowRoot } from "./runtime/shadow";
 import { FlowPilotRuntime } from "./runtime/runtime";
-import { mountChat } from "./ui/chat";
 
 type PluginState = {
   config: InitConfig | null;
   runtime: FlowPilotRuntime | null;
-  chat: ReturnType<typeof mountChat> | null;
   disposeBehaviorBridge: (() => void) | null;
   initialized: boolean;
 };
 
 const VERSION = "0.2.0";
 const GLOBAL_INIT_FLAG = "__FLOWPILOT__";
-const DEFAULT_STEP_MESSAGE = "Please continue the flow.";
-const FINISH_MESSAGE = "Flow completed.";
 
 const state: PluginState = {
   config: null,
   runtime: null,
-  chat: null,
   disposeBehaviorBridge: null,
   initialized: false,
 };
@@ -42,32 +37,6 @@ const getWorkflow = (config: InitConfig, taskId?: string): Workflow | null => {
   return workflows[0] || null;
 };
 
-const wrapConfig = (config: InitConfig): InitConfig => {
-  const userOnStepChange = config.onStepChange;
-  const userOnFinish = config.onFinish;
-  const userOnError = config.onError;
-
-  return {
-    ...config,
-    onStepChange: (step: Step) => {
-      if (state.chat) {
-        const message = step.action || step.desc || DEFAULT_STEP_MESSAGE;
-        state.chat.addMessage("assistant", message);
-      }
-      userOnStepChange?.(step);
-    },
-    onFinish: () => {
-      if (state.chat) {
-        state.chat.addMessage("assistant", FINISH_MESSAGE);
-      }
-      userOnFinish?.();
-    },
-    onError: (err: Error) => {
-      userOnError?.(err);
-    },
-  };
-};
-
 const init = (config: InitConfig) => {
   if (typeof window !== "undefined" && (window as any)[GLOBAL_INIT_FLAG]) {
     console.warn("[FlowPilot] already initialized on this page.");
@@ -80,12 +49,7 @@ const init = (config: InitConfig) => {
 
   state.config = config;
   const shadowRoot = mountShadowRoot();
-  state.chat = mountChat(shadowRoot, {
-    onSend: (text) => start(text, true),
-  });
-
-  const runtimeConfig = wrapConfig(config);
-  state.runtime = new FlowPilotRuntime(runtimeConfig, shadowRoot, eventBus);
+  state.runtime = new FlowPilotRuntime(config, shadowRoot, eventBus);
   state.disposeBehaviorBridge = initBehaviorBridge(eventBus);
   state.initialized = true;
   (window as any)[GLOBAL_INIT_FLAG] = true;
@@ -99,17 +63,14 @@ const init = (config: InitConfig) => {
     if (workflow) {
       start(workflow.id);
     } else {
-      runtimeConfig.onError?.(new Error("Workflow not found for autoStart"));
+      config.onError?.(new Error("Workflow not found for autoStart"));
     }
   }
 };
 
-const start = (intent: string, fromChat = false) => {
+const start = (intent: string) => {
   if (!state.runtime) {
     return;
-  }
-  if (!fromChat && state.chat) {
-    state.chat.addMessage("user", intent);
   }
   state.runtime.start(intent);
 };
@@ -130,7 +91,6 @@ const destroy = () => {
   }
   state.config = null;
   state.runtime = null;
-  state.chat = null;
   state.disposeBehaviorBridge = null;
   state.initialized = false;
 };

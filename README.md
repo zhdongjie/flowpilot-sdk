@@ -1,27 +1,21 @@
 ﻿# FlowPilot
 
-> FlowPilot is a pluggable frontend guidance SDK that teaches users step-by-step.
+FlowPilot is a frontend guidance SDK for step-by-step product onboarding and task execution.
 
 ![FlowPilot demo](docs/demo.gif)
 
-> Replace `docs/demo.gif` with a real walkthrough recording (highlight + step guidance).
+Language:
 
-```js
-FlowPilot.init(...)
-FlowPilot.start(...)
-FlowPilot.destroy()
-```
+- English: `README.md`
+- 简体中文: [README.zh-CN.md](README.zh-CN.md)
 
----
+## Highlights
 
-## Features
-
-- Workflow-driven guidance
-- Element highlighting (Mapping)
-- Tooltip and chat guidance
-- Plugin-style integration (no system intrusion)
-
----
+- Workflow-driven guidance runtime
+- UI element mapping (`ui.xxx -> selector`)
+- Highlight + tooltip rendering in Shadow DOM
+- Auto behavior capture for `click`, `form`, `route`, and `fetch`
+- Backend-driven JSON config support (`completion.rule`)
 
 ## Installation
 
@@ -31,187 +25,87 @@ FlowPilot.destroy()
 <script src="https://cdn.jsdelivr.net/npm/flowpilot@0.1.0/dist/flowpilot.umd.js"></script>
 ```
 
----
-
-## Local Build
+### Build from source
 
 ```bash
 npm install
 npm run build
 ```
 
-Custom output directory (CLI):
-
-```bash
-npm run build -- --outDir E:\release\flowpilot-sdk
-```
-
-Custom output directory (CLI, macOS/Linux):
-
-```bash
-npm run build -- --outDir /tmp/flowpilot-sdk
-```
-
-Custom output directory (PowerShell, Windows):
-
-```powershell
-$env:FLOWPILOT_OUT_DIR = "E:\release\flowpilot-sdk"
-npm run build
-```
-
-Custom output directory (CMD, Windows):
-
-```bat
-set FLOWPILOT_OUT_DIR=E:\release\flowpilot-sdk
-npm run build
-```
-
-Custom output directory (macOS/Linux):
-
-```bash
-FLOWPILOT_OUT_DIR=/tmp/flowpilot-sdk npm run build
-```
-
-Minified build (terser, outputs `.min.js`):
-
-```powershell
-$env:MINIFY = "true"
-npm run build
-```
-
-```bat
-set MINIFY=true
-npm run build
-```
-
-```bash
-MINIFY=true npm run build
-```
-
-Minified build with custom output directory:
-
-```powershell
-$env:MINIFY = "true"
-$env:FLOWPILOT_OUT_DIR = "E:\release\flowpilot-sdk"
-npm run build
-```
-
-```bat
-set MINIFY=true
-set FLOWPILOT_OUT_DIR=E:\release\flowpilot-sdk
-npm run build
-```
-
-```bash
-MINIFY=true FLOWPILOT_OUT_DIR=/tmp/flowpilot-sdk npm run build
-```
-
-Script shortcuts (cross-platform):
-
-```bash
-npm run build
-npm run build:min
-npm run build:all
-npm run clean
-```
-
-Minify + custom output (script shortcut):
-
-```bash
-npm run build:min -- --outDir /tmp/flowpilot-sdk
-```
-
-Build both (min + non-min) with custom output:
-
-```bash
-npm run build:all -- --outDir /tmp/flowpilot-sdk
-```
-
-See `docs/BUILD.md` for full options.
-
----
+More build options: [docs/BUILD.md](docs/BUILD.md)
 
 ## Quick Start
 
 ```html
 <button data-guide-id="ui.btn_login">Login</button>
 
+<script src="./dist/flowpilot.umd.js"></script>
 <script>
-FlowPilot.init({
-  workflow: {
-    id: "open_account",
-    steps: [
-      {
-        step: 1,
-        highlight: "ui.btn_login",
-        action: "Click login"
+  FlowPilot.init({
+    workflow: {
+      id: "open_account",
+      steps: [
+        {
+          step: 1,
+          highlight: "ui.btn_login",
+          action: "Click login"
+        }
+      ]
+    },
+    mapping: {
+      "ui.btn_login": {
+        selector: "[data-guide-id='ui.btn_login']"
       }
-    ]
-  },
-  mapping: {
-    "ui.btn_login": {
-      selector: "[data-guide-id='ui.btn_login']"
     }
-  }
-})
+  });
 
-FlowPilot.start("open_account")
+  FlowPilot.start("open_account");
 </script>
 ```
 
----
+## Backend-Driven Config (No Frontend Assembly)
 
-## API
-
-### init
-
-```js
-FlowPilot.init(config)
-```
-
-### start
+FlowPilot supports declarative completion rules in JSON.
+Your frontend can fetch config from backend and pass it directly to `FlowPilot.init`.
 
 ```js
-FlowPilot.start(taskId)
+const config = await fetch("/flowpilot/config").then((r) => r.json());
+FlowPilot.init({
+  workflow: config.workflow,
+  mapping: config.mapping
+});
 ```
 
-Behavior events are auto-captured by SDK bridge layer (`click`, `form submit`, `route`, `network success`), no manual emit required.
+See [docs/API.md](docs/API.md) for `completion.rule` syntax.
 
-### reset
+## Scope Boundary
 
-```js
-FlowPilot.reset()
-```
+Customer service or AI chat UI belongs to business/test projects, not the SDK core.
 
-### destroy
+- SDK: guidance runtime (`init/start/reset/destroy`)
+- Business project: intent routing and calling `FlowPilot.start(taskId)`
 
-```js
-FlowPilot.destroy()
-```
+Examples:
 
----
+- [examples/vue-smart-service-demo](examples/vue-smart-service-demo)
+- [examples/static-smart-service-demo](examples/static-smart-service-demo)
 
-## Docs
+## Documentation
 
-- docs/API.md
-- docs/WORKFLOW.md
-- docs/MAPPING.md
+- [docs/README.md](docs/README.md)
+- [docs/API.md](docs/API.md)
+- [docs/WORKFLOW.md](docs/WORKFLOW.md)
+- [docs/MAPPING.md](docs/MAPPING.md)
+- [docs/BUILD.md](docs/BUILD.md)
+- [docs/RELEASE.md](docs/RELEASE.md)
+- [docs/CHANGELOG.md](docs/CHANGELOG.md)
 
----
+## Community and Governance
 
-## Philosophy
-
-FlowPilot = Workflow + Mapping + Runtime
-
-> Behavior Engine 是唯一的“行为判定层”，Runtime 只负责状态推进，不参与行为判断。
-
----
+- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- [docs/CODE_OF_CONDUCT.md](docs/CODE_OF_CONDUCT.md)
+- [docs/SECURITY.md](docs/SECURITY.md)
 
 ## License
 
-MIT
-
-
-
-
-
+[MIT](LICENSE)

@@ -1,0 +1,151 @@
+﻿{
+  "workflow": {
+    "id": "open_account",
+    "steps": [
+      {
+        "step": 1,
+        "page": "/home",
+        "type": "form",
+        "highlight": "ui.form_login",
+        "action": "Fill in login form fields",
+        "behavior": {
+          "type": "form",
+          "completion": {
+            "type": "state",
+            "rule": {
+              "all": [
+                { "field": "source", "op": "eq", "value": "form" },
+                { "field": "formData.phone", "op": "truthy" },
+                { "field": "formData.code", "op": "truthy" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "step": 2,
+        "page": "/home",
+        "type": "form",
+        "highlight": "ui.btn_login",
+        "action": "Submit login",
+        "behavior": {
+          "type": "form",
+          "completion": {
+            "type": "event",
+            "rule": {
+              "all": [
+                { "field": "source", "op": "eq", "value": "fetch" },
+                { "field": "ok", "op": "eq", "value": true },
+                { "field": "url", "op": "includes", "value": "/auth/login" },
+                { "field": "status", "op": "eq", "value": 200 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "step": 3,
+        "page": "/home",
+        "type": "route",
+        "highlight": "ui.btn_login",
+        "action": "Navigate to customer center",
+        "behavior": {
+          "type": "route",
+          "completion": {
+            "type": "event",
+            "rule": {
+              "all": [
+                { "field": "source", "op": "eq", "value": "route" },
+                { "field": "pathname", "op": "eq", "value": "/customer" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "step": 4,
+        "page": "/customer",
+        "type": "click",
+        "highlight": "ui.menu_open_account",
+        "action": "Click Open Account"
+      },
+      {
+        "step": 5,
+        "page": "/customer",
+        "type": "route",
+        "highlight": "ui.menu_open_account",
+        "action": "Navigate to account form page",
+        "behavior": {
+          "type": "route",
+          "completion": {
+            "type": "event",
+            "rule": {
+              "all": [
+                { "field": "source", "op": "eq", "value": "route" },
+                { "field": "pathname", "op": "eq", "value": "/customer/create" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "step": 6,
+        "page": "/customer/create",
+        "type": "form",
+        "highlight": "ui.form_open_account",
+        "action": "Fill in account opening form fields",
+        "behavior": {
+          "type": "form",
+          "completion": {
+            "type": "state",
+            "rule": {
+              "all": [
+                { "field": "source", "op": "eq", "value": "form" },
+                { "field": "formData.name", "op": "truthy" },
+                { "field": "formData.idCard", "op": "truthy" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "step": 7,
+        "page": "/customer/create",
+        "type": "form",
+        "highlight": "ui.btn_submit_application",
+        "action": "Submit and wait for successful API response",
+        "behavior": {
+          "type": "form",
+          "completion": {
+            "type": "event",
+            "rule": {
+              "all": [
+                { "field": "source", "op": "eq", "value": "fetch" },
+                { "field": "ok", "op": "eq", "value": true },
+                { "field": "url", "op": "includes", "value": "/account/open" },
+                { "field": "status", "op": "eq", "value": 200 }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "mapping": {
+    "ui.form_login": {
+      "selector": "[data-guide-id='ui.form_login']"
+    },
+    "ui.btn_login": {
+      "selector": "[data-guide-id='ui.btn_login']"
+    },
+    "ui.menu_open_account": {
+      "selector": "[data-guide-id='ui.menu_open_account']"
+    },
+    "ui.form_open_account": {
+      "selector": "[data-guide-id='ui.form_open_account']"
+    },
+    "ui.btn_submit_application": {
+      "selector": "[data-guide-id='ui.btn_submit_application']"
+    }
+  }
+}

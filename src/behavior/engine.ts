@@ -1,6 +1,7 @@
 import type { Step } from "../types";
 import { EventBus } from "./eventBus";
 import type { BehaviorEvent } from "./protocol";
+import { evaluateBehaviorRule } from "./rule";
 import type { StepBehavior } from "./types";
 
 type RegisteredBehavior = {
@@ -87,8 +88,14 @@ export class BehaviorEngine {
           return;
         }
 
-        const validator = current.behavior.completion?.validator;
-        if (!validator || validator(event)) {
+        const completion = current.behavior.completion;
+        const validator = completion?.validator;
+        const rule = completion?.rule;
+        const matchedByValidator = typeof validator === "function" && validator(event);
+        const matchedByRule =
+          typeof validator !== "function" && evaluateBehaviorRule(rule, event);
+
+        if (matchedByValidator || matchedByRule) {
           this.complete(current, event);
         }
       }

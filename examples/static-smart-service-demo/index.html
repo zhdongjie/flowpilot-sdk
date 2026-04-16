@@ -1,0 +1,325 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FlowPilot Test Project - Smart Service Starts Guide</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+        color: #1f2d3d;
+      }
+      .page {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .hero {
+        background: #fff;
+        border: 1px solid #dce6f5;
+        border-radius: 16px;
+        padding: 18px 20px;
+        box-shadow: 0 10px 26px rgba(16, 41, 80, 0.08);
+      }
+      .hero h1 { margin: 0 0 10px 0; font-size: 20px; }
+      .hero p { margin: 0; color: #4f6278; font-size: 14px; }
+      .actions {
+        margin-top: 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .demo-btn {
+        border: none;
+        border-radius: 999px;
+        background: #0f5bd7;
+        color: #fff;
+        padding: 8px 14px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .demo-btn.secondary { background: #207a46; }
+
+      .business {
+        margin-top: 18px;
+        background: #fff;
+        border: 1px solid #dce6f5;
+        border-radius: 16px;
+        padding: 18px 20px;
+      }
+      .business h2 { margin: 0 0 10px 0; font-size: 18px; }
+      .business p { margin: 8px 0; color: #4f6278; }
+      .business-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+      .card {
+        border: 1px solid #dce6f5;
+        border-radius: 12px;
+        padding: 10px;
+      }
+      .card-title { margin: 0 0 8px 0; font-weight: 600; }
+      .card button {
+        border: none;
+        border-radius: 10px;
+        padding: 7px 10px;
+        background: #163a7c;
+        color: #fff;
+        cursor: pointer;
+      }
+
+      .chat {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        width: min(360px, calc(100vw - 24px));
+        background: #fff;
+        border: 1px solid #dce6f5;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 12px 30px rgba(20, 40, 70, 0.18);
+      }
+      .chat-header {
+        background: #0f5bd7;
+        color: #fff;
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+      .chat-body {
+        height: 260px;
+        overflow-y: auto;
+        padding: 10px;
+        background: #f6f9ff;
+      }
+      .bubble {
+        max-width: 85%;
+        margin: 6px 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 13px;
+        line-height: 1.4;
+        word-break: break-word;
+      }
+      .bubble.assistant { background: #fff; border: 1px solid #d8e4f8; }
+      .bubble.user {
+        background: #1a5cd7;
+        color: #fff;
+        margin-left: auto;
+      }
+      .chat-footer {
+        display: flex;
+        gap: 8px;
+        padding: 10px;
+        border-top: 1px solid #e4ecfa;
+      }
+      .chat-footer input {
+        flex: 1;
+        border: 1px solid #cbd9f4;
+        border-radius: 8px;
+        padding: 8px;
+        font-size: 13px;
+      }
+      .chat-footer button {
+        border: none;
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #0f5bd7;
+        color: #fff;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <section class="hero">
+        <h1>Test Project: Smart Service Starts Guide</h1>
+        <p>
+          This page models a business/test project. FlowPilot SDK stays pure guidance runtime and does not include a customer service UI.
+        </p>
+        <div class="actions">
+          <button class="demo-btn" data-start-workflow="open_account">
+            Smart Service: start open account guide
+          </button>
+          <button class="demo-btn secondary" data-start-workflow="submit_documents">
+            Smart Service: start document guide
+          </button>
+        </div>
+      </section>
+
+      <section class="business">
+        <h2>Business page controls</h2>
+        <p>These are real UI actions that the guide highlights.</p>
+        <div class="business-grid">
+          <div class="card">
+            <p class="card-title">Account</p>
+            <button data-guide-id="ui.btn_open_account">Open account</button>
+          </div>
+          <div class="card">
+            <p class="card-title">Documents</p>
+            <button data-guide-id="ui.btn_upload_docs">Upload documents</button>
+          </div>
+          <div class="card">
+            <p class="card-title">Submit</p>
+            <button data-guide-id="ui.btn_submit_request">Submit request</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="chat">
+      <div class="chat-header">Smart Service (test project)</div>
+      <div class="chat-body" id="chatBody"></div>
+      <div class="chat-footer">
+        <input id="chatInput" placeholder="Try: I want to open an account" />
+        <button id="chatSend">Send</button>
+      </div>
+    </aside>
+
+    <script src="../../dist/flowpilot.umd.js"></script>
+    <script>
+      const workflows = [
+        {
+          id: "open_account",
+          steps: [
+            {
+              step: 1,
+              highlight: "ui.btn_open_account",
+              action: "Click Open account first"
+            },
+            {
+              step: 2,
+              highlight: "ui.btn_submit_request",
+              action: "Then click Submit request"
+            }
+          ]
+        },
+        {
+          id: "submit_documents",
+          steps: [
+            {
+              step: 1,
+              highlight: "ui.btn_upload_docs",
+              action: "Click Upload documents first"
+            },
+            {
+              step: 2,
+              highlight: "ui.btn_submit_request",
+              action: "After upload, click Submit request"
+            }
+          ]
+        }
+      ];
+
+      const mapping = {
+        "ui.btn_open_account": {
+          selector: "[data-guide-id='ui.btn_open_account']"
+        },
+        "ui.btn_upload_docs": {
+          selector: "[data-guide-id='ui.btn_upload_docs']"
+        },
+        "ui.btn_submit_request": {
+          selector: "[data-guide-id='ui.btn_submit_request']"
+        }
+      };
+
+      const chatBody = document.getElementById("chatBody");
+      const chatInput = document.getElementById("chatInput");
+      const chatSend = document.getElementById("chatSend");
+
+      const addMessage = (role, text) => {
+        const bubble = document.createElement("div");
+        bubble.className = `bubble ${role}`;
+        bubble.textContent = text;
+        chatBody.appendChild(bubble);
+        chatBody.scrollTop = chatBody.scrollHeight;
+      };
+
+      const resolveWorkflowByText = (text) => {
+        const normalized = String(text || "").trim().toLowerCase();
+        if (!normalized) return null;
+        if (/(open|account|signup|register)/.test(normalized)) {
+          return {
+            workflowId: "open_account",
+            message: "Detected open account intent. Starting guide now."
+          };
+        }
+        if (/(document|upload|id|verify)/.test(normalized)) {
+          return {
+            workflowId: "submit_documents",
+            message: "Detected document intent. Starting guide now."
+          };
+        }
+        return null;
+      };
+
+      const startWorkflow = (workflowId, source) => {
+        FlowPilot.start(workflowId);
+        addMessage(
+          "assistant",
+          `Guide started via ${source}: ${workflowId}. Follow highlight and tooltip.`
+        );
+      };
+
+      const onSend = () => {
+        const text = chatInput.value.trim();
+        if (!text) return;
+        chatInput.value = "";
+        addMessage("user", text);
+
+        const matched = resolveWorkflowByText(text);
+        if (!matched) {
+          addMessage(
+            "assistant",
+            "No matching guide intent yet. Try: open account or upload documents."
+          );
+          return;
+        }
+
+        addMessage("assistant", matched.message);
+        startWorkflow(matched.workflowId, "smart service");
+      };
+
+      chatSend.addEventListener("click", onSend);
+      chatInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          onSend();
+        }
+      });
+
+      document.querySelectorAll("[data-start-workflow]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const workflowId = button.getAttribute("data-start-workflow");
+          if (workflowId) {
+            startWorkflow(workflowId, "quick action");
+          }
+        });
+      });
+
+      FlowPilot.init({
+        workflow: workflows,
+        mapping,
+        onStepChange: (step) => {
+          const message = step.action || step.desc || "Please continue the guide.";
+          addMessage("assistant", `Step ${step.step}: ${message}`);
+        },
+        onFinish: () => {
+          addMessage("assistant", "Guide finished.");
+        },
+        onError: (error) => {
+          addMessage("assistant", `Guide failed: ${error.message}`);
+        }
+      });
+
+      addMessage(
+        "assistant",
+        "Hello. I am the test-project smart service. Type: open account."
+      );
+    </script>
+  </body>
+</html>

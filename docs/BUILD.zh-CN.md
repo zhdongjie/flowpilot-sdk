@@ -1,84 +1,84 @@
-﻿# Build Guide
+﻿# 构建指南
 
-FlowPilot uses Vite library mode and outputs UMD + ESM bundles.
+FlowPilot 使用 Vite library mode 输出 UMD + ESM 包。
 
-## Prerequisites
+## 前置要求
 
 - Node.js 18+
 - npm
 
-Install dependencies once:
+安装依赖：
 
 ```bash
 npm install
 ```
 
-## Build Commands
+## 构建命令
 
-### Default build
+### 默认构建
 
 ```bash
 npm run build
 ```
 
-Outputs:
+输出：
 
 - `dist/flowpilot.umd.js`
 - `dist/flowpilot.esm.js`
 
-### Minified build
+### 压缩构建
 
 ```bash
 npm run build:min
 ```
 
-Outputs:
+输出：
 
 - `dist/flowpilot.umd.min.js`
 - `dist/flowpilot.esm.min.js`
 
-### Build both
+### 同时构建
 
 ```bash
 npm run build:all
 ```
 
-### Clean output
+### 清理输出
 
 ```bash
 npm run clean
 ```
 
-## Custom output directory
+## 自定义输出目录
 
-### CLI override
+### 命令行覆盖
 
 ```bash
 npm run build -- --outDir /tmp/flowpilot-sdk
 ```
 
-Windows PowerShell example:
+PowerShell 示例：
 
 ```powershell
 npm run build -- --outDir E:\release\flowpilot-sdk
 ```
 
-### Environment variable
+### 环境变量方式
 
-PowerShell:
+PowerShell：
 
 ```powershell
 $env:FLOWPILOT_OUT_DIR = "E:\release\flowpilot-sdk"
 npm run build
 ```
 
-Bash:
+Bash：
 
 ```bash
 FLOWPILOT_OUT_DIR=/tmp/flowpilot-sdk npm run build
 ```
 
-## Notes
+## 说明
 
-- `emptyOutDir` is disabled in Vite config so minified and non-minified bundles can coexist.
-- Run `npm run clean` before release if you need a fresh output directory.
+- Vite 中 `emptyOutDir` 被关闭，以便压缩与非压缩产物共存。
+- 若需要完全干净目录，请先执行 `npm run clean`。

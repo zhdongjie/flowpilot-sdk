@@ -1,6 +1,6 @@
-﻿# Release Guide
+﻿# 发布指南
 
-Canonical release guide is maintained in:
+正式维护位置：
 
 - [docs/RELEASE.md](docs/RELEASE.md)
 - [docs/RELEASE.zh-CN.md](docs/RELEASE.zh-CN.md)
