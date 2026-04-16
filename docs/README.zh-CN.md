@@ -1,7 +1,7 @@
 ﻿# 文档索引
 
-- [API.zh-CN.md](API.zh-CN.md)：运行时 API 与 JSON completion rule DSL。
-- [WORKFLOW.zh-CN.md](WORKFLOW.zh-CN.md)：workflow 结构与步骤设计建议。
+- [API.zh-CN.md](API.zh-CN.md)：运行时 API 与行为协议 v1（emit-only）。
+- [WORKFLOW.zh-CN.md](WORKFLOW.zh-CN.md)：workflow 结构与 emit-only 完成模型。
 - [MAPPING.zh-CN.md](MAPPING.zh-CN.md)：UI key 到选择器映射规则。
 - [BUILD.zh-CN.md](BUILD.zh-CN.md)：本地构建与打包说明。
 - [RELEASE.zh-CN.md](RELEASE.zh-CN.md)：发布与发布前检查清单。

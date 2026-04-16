@@ -190,12 +190,26 @@
             {
               step: 1,
               highlight: "ui.btn_open_account",
-              action: "Click Open account first"
+              action: "Click Open account first",
+              behavior: {
+                type: "click",
+                completion: {
+                  type: "event",
+                  name: "static_open_account_clicked"
+                }
+              }
             },
             {
               step: 2,
               highlight: "ui.btn_submit_request",
-              action: "Then click Submit request"
+              action: "Then click Submit request",
+              behavior: {
+                type: "click",
+                completion: {
+                  type: "event",
+                  name: "static_submit_request_clicked"
+                }
+              }
             }
           ]
         },
@@ -205,12 +219,26 @@
             {
               step: 1,
               highlight: "ui.btn_upload_docs",
-              action: "Click Upload documents first"
+              action: "Click Upload documents first",
+              behavior: {
+                type: "click",
+                completion: {
+                  type: "event",
+                  name: "static_upload_docs_clicked"
+                }
+              }
             },
             {
               step: 2,
               highlight: "ui.btn_submit_request",
-              action: "After upload, click Submit request"
+              action: "After upload, click Submit request",
+              behavior: {
+                type: "click",
+                completion: {
+                  type: "event",
+                  name: "static_submit_request_clicked"
+                }
+              }
             }
           ]
         }
@@ -266,6 +294,17 @@
         );
       };
 
+      const emitAction = (name, payload) => {
+        if (!FlowPilot || typeof FlowPilot.emit !== "function") {
+          return;
+        }
+        FlowPilot.emit({
+          type: "ACTION",
+          name,
+          payload
+        });
+      };
+
       const onSend = () => {
         const text = chatInput.value.trim();
         if (!text) return;
@@ -300,6 +339,28 @@
           }
         });
       });
+
+      const openAccountButton = document.querySelector("[data-guide-id='ui.btn_open_account']");
+      const uploadDocsButton = document.querySelector("[data-guide-id='ui.btn_upload_docs']");
+      const submitRequestButton = document.querySelector("[data-guide-id='ui.btn_submit_request']");
+
+      if (openAccountButton) {
+        openAccountButton.addEventListener("click", () => {
+          emitAction("static_open_account_clicked");
+        });
+      }
+
+      if (uploadDocsButton) {
+        uploadDocsButton.addEventListener("click", () => {
+          emitAction("static_upload_docs_clicked");
+        });
+      }
+
+      if (submitRequestButton) {
+        submitRequestButton.addEventListener("click", () => {
+          emitAction("static_submit_request_clicked");
+        });
+      }
 
       FlowPilot.init({
         workflow: workflows,

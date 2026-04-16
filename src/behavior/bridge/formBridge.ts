@@ -61,25 +61,11 @@ export const initFormBridge = (eventBus: EventBus) => {
     eventBus.emit("BEHAVIOR_EVENT", eventPayload);
   };
 
-  const onSubmit = (event: Event) => {
-    emitFormEvent(event);
-  };
-
-  const onInput = (event: Event) => {
-    emitFormEvent(event);
-  };
-
-  const onChange = (event: Event) => {
-    emitFormEvent(event);
-  };
+  const onSubmit = (event: Event) => emitFormEvent(event);
 
   document.addEventListener("submit", onSubmit, true);
-  document.addEventListener("input", onInput, true);
-  document.addEventListener("change", onChange, true);
 
   return () => {
     document.removeEventListener("submit", onSubmit, true);
-    document.removeEventListener("input", onInput, true);
-    document.removeEventListener("change", onChange, true);
   };
 };

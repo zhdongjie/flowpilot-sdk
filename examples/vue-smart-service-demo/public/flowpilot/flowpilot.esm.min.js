@@ -78,22 +78,10 @@ const initFormBridge = (eventBus2) => {
     };
     eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
   };
-  const onSubmit = (event) => {
-    emitFormEvent(event);
-  };
-  const onInput = (event) => {
-    emitFormEvent(event);
-  };
-  const onChange = (event) => {
-    emitFormEvent(event);
-  };
+  const onSubmit = (event) => emitFormEvent(event);
   document.addEventListener("submit", onSubmit, true);
-  document.addEventListener("input", onInput, true);
-  document.addEventListener("change", onChange, true);
   return () => {
     document.removeEventListener("submit", onSubmit, true);
-    document.removeEventListener("input", onInput, true);
-    document.removeEventListener("change", onChange, true);
   };
 };
 const buildRouteEvent = () => ({
@@ -181,12 +169,6 @@ const mountShadowRoot = () => {
   document.body.appendChild(host);
   return host.attachShadow({ mode: "open" });
 };
-const normalizePathname = (path = "") => {
-  const hashIndex = path.indexOf("#");
-  const queryIndex = path.indexOf("?");
-  const cutIndex = hashIndex === -1 ? queryIndex : queryIndex === -1 ? hashIndex : Math.min(hashIndex, queryIndex);
-  return cutIndex === -1 ? path : path.slice(0, cutIndex);
-};
 class BehaviorEngine {
   constructor(eventBus2) {
     this.behaviors = /* @__PURE__ */ new Map();
@@ -242,19 +224,22 @@ class BehaviorEngine {
     this.detachBehaviorListener = this.eventBus.on(
       "BEHAVIOR_EVENT",
       (event) => {
-        console.log("[FlowPilot Event]", event);
         const current = this.getCurrentStep();
         if (!current) {
           return;
         }
-        const completion = current.behavior.completion;
-        if (!completion || completion.type !== "state") {
+        const autoEmit = current.behavior.autoEmit;
+        if (!autoEmit) {
           return;
         }
-        const validator = completion.validator;
-        if (typeof validator === "function" && validator(event)) {
-          this.complete(current, event);
+        if (!this.matchesAutoEmit(current, event)) {
+          return;
         }
+        this.eventBus.emit("ACTION", {
+          type: "ACTION",
+          name: autoEmit,
+          payload: event
+        });
       }
     );
   }
@@ -268,10 +253,28 @@ class BehaviorEngine {
       if (!completion || completion.type !== "event") {
         return;
       }
-      if (event.name === completion.name) {
-        this.complete(current, event);
+      if (event.name !== completion.name) {
+        return;
       }
+      if (typeof completion.validator === "function") {
+        if (!completion.validator(event.payload)) {
+          return;
+        }
+      }
+      this.complete(current, event);
     });
+  }
+  matchesAutoEmit(step, event) {
+    if (event.source === "route") {
+      return true;
+    }
+    if (event.source === "click" || event.source === "form") {
+      if (!step.guideId) {
+        return true;
+      }
+      return event.guideId === step.guideId;
+    }
+    return false;
   }
   getCurrentStep() {
     if (this.activeStepId === null) {
@@ -300,46 +303,13 @@ class BehaviorEngine {
     if (step.behavior) {
       return step.behavior;
     }
-    if (step.type === "route") {
-      return {
-        type: "route",
-        completion: {
-          type: "state",
-          validator: (event) => {
-            if (event.source !== "route") {
-              return false;
-            }
-            if (!step.page) {
-              return true;
-            }
-            if (step.page.includes("?") || step.page.includes("#")) {
-              return event.pathname === step.page;
-            }
-            return normalizePathname(event.pathname || "") === step.page;
-          }
-        }
-      };
+    if (step.type) {
+      return { type: step.type };
     }
-    if (step.type === "form" || Boolean(step.form && step.form.length)) {
-      return {
-        type: "form"
-      };
+    if (step.form && step.form.length) {
+      return { type: "form" };
     }
-    return {
-      type: "click",
-      completion: {
-        type: "state",
-        validator: (event) => {
-          if (event.source !== "click") {
-            return false;
-          }
-          if (!step.highlight) {
-            return true;
-          }
-          return event.guideId === step.highlight;
-        }
-      }
-    };
+    return { type: "click" };
   }
 }
 class BehaviorLifecycle {

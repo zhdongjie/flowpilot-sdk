@@ -32,7 +32,7 @@ Starts a workflow by id.
 
 ## `FlowPilot.emit(event)`
 
-Unified non-intrusive behavior event API.
+Unified behavior protocol API.
 
 ```ts
 FlowPilot.emit({
@@ -60,35 +60,54 @@ Resets current flow state.
 
 Destroys runtime and listeners.
 
-## Behavior Protocol v1
+## Behavior Protocol v1 (emit-only)
 
-Behavior completion supports two modes:
+Step completion is emit-driven only.
 
 ```ts
-type Completion =
-  | { type: "event"; name: string }
-  | { type: "state"; validator: (ctx: any) => boolean };
+type Completion = {
+  type: "event";
+  name: string;
+  validator?: (payload: any) => boolean;
+};
 ```
 
-### Event mode (recommended for backend JSON configs)
+### Completion semantics
+
+1. SDK listens `ACTION` events.
+2. If `event.name === step.behavior.completion.name`, step can complete.
+3. If `validator` exists, SDK checks it first.
+
+```ts
+if (completion.validator && !completion.validator(event.payload)) {
+  return;
+}
+// then STEP_COMPLETE
+```
+
+### Optional auto emit from bridge
+
+You can configure optional `autoEmit` in step behavior.
 
 ```json
 {
-  "type": "event",
-  "name": "login_success"
+  "behavior": {
+    "type": "click",
+    "autoEmit": "menu_open_account_clicked",
+    "completion": { "type": "event", "name": "menu_open_account_clicked" }
+  }
 }
 ```
 
-SDK completes the active step when `FlowPilot.emit({ type: "ACTION", name: "login_success" })` is called.
+Bridges no longer complete steps directly; they can only produce optional ACTION emissions.
 
-### State mode
+## Built-in behavior sources
 
-Use function validator for in-code configurations.
+- `click`: DOM capture for optional `autoEmit`
+- `form submit`: context capture for optional `autoEmit`
+- `route`: route capture for optional `autoEmit`
 
-## Built-in automatic sources
+No SDK network interception:
 
-- `click`: kept as DOM-based automatic behavior.
-- `form`: captured for context, but not auto-completed unless validator is configured.
-- `fetch/axios`: no SDK interception, no SDK network hijacking.
-
-This keeps runtime non-intrusive and behavior fully controllable.
+- no `fetch` hijack
+- no `axios` hook

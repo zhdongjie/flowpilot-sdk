@@ -1,4 +1,4 @@
-import type { Step } from "../types";
+﻿import type { Step } from "../types";
 import { EventBus } from "./eventBus";
 import type { ActionEvent, BehaviorEvent } from "./protocol";
 import type { StepBehavior } from "./types";
@@ -7,18 +7,6 @@ type RegisteredBehavior = {
   stepId: number;
   guideId: string;
   behavior: StepBehavior;
-};
-
-const normalizePathname = (path = "") => {
-  const hashIndex = path.indexOf("#");
-  const queryIndex = path.indexOf("?");
-  const cutIndex =
-    hashIndex === -1
-      ? queryIndex
-      : queryIndex === -1
-        ? hashIndex
-        : Math.min(hashIndex, queryIndex);
-  return cutIndex === -1 ? path : path.slice(0, cutIndex);
 };
 
 export class BehaviorEngine {
@@ -86,22 +74,25 @@ export class BehaviorEngine {
     this.detachBehaviorListener = this.eventBus.on<BehaviorEvent>(
       "BEHAVIOR_EVENT",
       (event) => {
-        console.log("[FlowPilot Event]", event);
-
         const current = this.getCurrentStep();
         if (!current) {
           return;
         }
 
-        const completion = current.behavior.completion;
-        if (!completion || completion.type !== "state") {
+        const autoEmit = current.behavior.autoEmit;
+        if (!autoEmit) {
           return;
         }
 
-        const validator = completion.validator;
-        if (typeof validator === "function" && validator(event)) {
-          this.complete(current, event);
+        if (!this.matchesAutoEmit(current, event)) {
+          return;
         }
+
+        this.eventBus.emit<ActionEvent>("ACTION", {
+          type: "ACTION",
+          name: autoEmit,
+          payload: event,
+        });
       }
     );
   }
@@ -118,10 +109,33 @@ export class BehaviorEngine {
         return;
       }
 
-      if (event.name === completion.name) {
-        this.complete(current, event);
+      if (event.name !== completion.name) {
+        return;
       }
+
+      if (typeof completion.validator === "function") {
+        if (!completion.validator(event.payload)) {
+          return;
+        }
+      }
+
+      this.complete(current, event);
     });
+  }
+
+  private matchesAutoEmit(step: RegisteredBehavior, event: BehaviorEvent) {
+    if (event.source === "route") {
+      return true;
+    }
+
+    if (event.source === "click" || event.source === "form") {
+      if (!step.guideId) {
+        return true;
+      }
+      return event.guideId === step.guideId;
+    }
+
+    return false;
   }
 
   private getCurrentStep() {
@@ -155,47 +169,14 @@ export class BehaviorEngine {
       return step.behavior;
     }
 
-    if (step.type === "route") {
-      return {
-        type: "route",
-        completion: {
-          type: "state",
-          validator: (event: BehaviorEvent) => {
-            if (event.source !== "route") {
-              return false;
-            }
-            if (!step.page) {
-              return true;
-            }
-            if (step.page.includes("?") || step.page.includes("#")) {
-              return event.pathname === step.page;
-            }
-            return normalizePathname(event.pathname || "") === step.page;
-          },
-        },
-      };
+    if (step.type) {
+      return { type: step.type };
     }
 
-    if (step.type === "form" || Boolean(step.form && step.form.length)) {
-      return {
-        type: "form",
-      };
+    if (step.form && step.form.length) {
+      return { type: "form" };
     }
 
-    return {
-      type: "click",
-      completion: {
-        type: "state",
-        validator: (event: BehaviorEvent) => {
-          if (event.source !== "click") {
-            return false;
-          }
-          if (!step.highlight) {
-            return true;
-          }
-          return event.guideId === step.highlight;
-        },
-      },
-    };
+    return { type: "click" };
   }
 }

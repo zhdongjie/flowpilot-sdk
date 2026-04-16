@@ -49,7 +49,14 @@
         "page": "/customer",
         "type": "click",
         "highlight": "ui.menu_open_account",
-        "action": "Click Open Account"
+        "action": "Click Open Account",
+        "behavior": {
+          "type": "click",
+          "completion": {
+            "type": "event",
+            "name": "menu_open_account_clicked"
+          }
+        }
       },
       {
         "step": 5,

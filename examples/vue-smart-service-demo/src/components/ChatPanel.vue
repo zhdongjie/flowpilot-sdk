@@ -422,6 +422,7 @@ const resetDemo = () => {
 const selectMenu = (key) => {
   activeMenu.value = key;
   if (key === "open") {
+    emitFlowPilotAction("menu_open_account_clicked");
     goToForm();
     emitFlowPilotAction("route_to_customer_create", {
       pathname: CUSTOMER_CREATE_PATH,

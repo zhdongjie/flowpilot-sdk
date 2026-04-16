@@ -37,17 +37,31 @@ Workflow 是引导配置的核心定义。
 - `form?`：表单字段元信息
 - `behavior?`：完成条件定义
 
-## Completion 模式
+## 完成模型（emit-only）
 
 ```ts
-type Completion =
-  | { type: "event"; name: string }
-  | { type: "state"; validator: (ctx: any) => boolean };
+type Completion = {
+  type: "event";
+  name: string;
+  validator?: (payload: any) => boolean;
+};
 ```
+
+## 可选 autoEmit
+
+```ts
+behavior: {
+  type: "click",
+  autoEmit: "menu_open_account_clicked",
+  completion: { type: "event", name: "menu_open_account_clicked" }
+}
+```
+
+`autoEmit` 只是便捷触发方式，本质仍通过 `ACTION` 事件推进步骤。
 
 ## 建议实践
 
 - 每个步骤只表达一个明确动作。
 - 使用稳定的 `highlight` key（`ui.xxx`），选择器放到 mapping。
-- 后端下发场景优先使用 `type: "event"`。
-- 在业务代码中通过 `FlowPilot.emit({ type: "ACTION", name })` 推进步骤。
+- 关键业务节点优先在业务代码里显式 `FlowPilot.emit`。
+- `autoEmit` 仅用于确定性强的 UI 行为。

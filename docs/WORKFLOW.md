@@ -37,17 +37,31 @@ A workflow is the core guidance definition.
 - `form?`: form fields metadata
 - `behavior?`: completion behavior
 
-## Completion Modes
+## Completion Model (emit-only)
 
 ```ts
-type Completion =
-  | { type: "event"; name: string }
-  | { type: "state"; validator: (ctx: any) => boolean };
+type Completion = {
+  type: "event";
+  name: string;
+  validator?: (payload: any) => boolean;
+};
 ```
+
+## Optional auto emit
+
+```ts
+behavior: {
+  type: "click",
+  autoEmit: "menu_open_account_clicked",
+  completion: { type: "event", name: "menu_open_account_clicked" }
+}
+```
+
+`autoEmit` is optional convenience. It still advances steps through `ACTION` events only.
 
 ## Best Practices
 
 - Keep one clear user action per step.
 - Use stable `highlight` keys (`ui.xxx`) and map selectors separately.
-- Prefer event completion (`type: "event"`) for backend-delivered JSON workflows.
-- Use `FlowPilot.emit({ type: "ACTION", name })` in business code to advance steps.
+- Prefer explicit `FlowPilot.emit` in business code for critical transitions.
+- Use `autoEmit` only for deterministic UI actions.
