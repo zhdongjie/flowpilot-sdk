@@ -10,7 +10,7 @@
 
 ## `FlowPilot.init(config)`
 
-初始化运行时（同一页面生命周期只应初始化一次）。
+初始化运行时（同一页面生命周期仅初始化一次）。
 
 ### `config` 字段
 
@@ -24,79 +24,71 @@
 - `onFinish?`: `() => void`
 - `onError?`: `(error) => void`
 
-### 后端驱动配置模式
-
-前端可直接请求 JSON 配置并初始化：
-
-```js
-const config = await fetch("/flowpilot/config").then((r) => r.json());
-FlowPilot.init({
-  workflow: config.workflow,
-  mapping: config.mapping
-});
-```
-
 ## `FlowPilot.start(taskId)`
 
-按任务 id 启动引导流程。
+按任务 id 启动引导。
 
 - `taskId`: `string`
 
+## `FlowPilot.emit(event)`
+
+统一的非侵入行为事件 API。
+
+```ts
+FlowPilot.emit({
+  type: "ACTION",
+  name: "login_success",
+  payload: { userId: "u_123" }
+});
+```
+
+事件结构：
+
+```ts
+type ActionEvent = {
+  type: "ACTION";
+  name: string;
+  payload?: any;
+};
+```
+
 ## `FlowPilot.reset()`
 
-重置当前引导状态与运行状态。
+重置当前引导状态。
 
 ## `FlowPilot.destroy()`
 
-销毁运行时、监听器与 Shadow DOM 容器。
+销毁运行时和监听器。
 
-## Completion Rule DSL（`step.behavior.completion.rule`）
+## 行为协议 v1
 
-当你希望使用纯 JSON 配置（前端不拼函数）时，使用 rule DSL。
+步骤完成条件支持两种模式：
 
-### 示例
+```ts
+type Completion =
+  | { type: "event"; name: string }
+  | { type: "state"; validator: (ctx: any) => boolean };
+```
+
+### 事件模式（推荐用于后端 JSON 配置）
 
 ```json
 {
-  "type": "form",
-  "completion": {
-    "type": "event",
-    "rule": {
-      "all": [
-        { "field": "source", "op": "eq", "value": "fetch" },
-        { "field": "ok", "op": "eq", "value": true },
-        { "field": "url", "op": "includes", "value": "/auth/login" },
-        { "field": "status", "op": "eq", "value": 200 }
-      ]
-    }
-  }
+  "type": "event",
+  "name": "login_success"
 }
 ```
 
-### 操作符
+当调用 `FlowPilot.emit({ type: "ACTION", name: "login_success" })` 时，SDK 会完成当前步骤。
 
-- `eq`：严格相等
-- `neq`：严格不等
-- `includes`：字符串包含或数组包含
-- `in`：值是否在给定数组中
-- `exists`：字段是否存在（`true`）或不存在（`false`）
-- `truthy`：JS truthy
-- `falsy`：JS falsy
-- `match`：正则匹配（模式字符串）
+### 状态模式
 
-### 规则组合
+用于代码内配置函数型校验器。
 
-- `all`：全部子规则命中
-- `any`：任一子规则命中
-- `not`：对子规则取反
+## 内置自动来源
 
-## 自动捕获行为事件
+- `click`：保留 DOM 自动行为。
+- `form`：仅采集上下文，不自动完成；需显式配置 validator 才能自动完成。
+- `fetch/axios`：SDK 不再拦截，不再做网络劫持。
 
-SDK bridge 层会自动捕获：
-
-- `click`
-- `form submit`
-- `route changes`
-- `fetch / axios responses`
-
-这些事件用于行为驱动的步骤完成判定。
+这样可以保证运行时非侵入、行为可控。

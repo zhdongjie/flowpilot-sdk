@@ -1,4 +1,4 @@
-export type BehaviorSource = "click" | "form" | "route" | "fetch";
+export type BehaviorSource = "click" | "form" | "route";
 
 export type BehaviorEvent = {
   source: BehaviorSource;
@@ -6,8 +6,10 @@ export type BehaviorEvent = {
   guideId?: string;
   pathname?: string;
   formData?: Record<string, any>;
-  url?: string;
-  method?: string;
-  status?: number;
-  ok?: boolean;
+};
+
+export type ActionEvent = {
+  type: "ACTION";
+  name: string;
+  payload?: any;
 };

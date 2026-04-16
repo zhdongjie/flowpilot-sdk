@@ -1,6 +1,0 @@
-﻿# Changelog
-
-Canonical changelog is maintained in:
-
-- [docs/CHANGELOG.md](docs/CHANGELOG.md)
-- [docs/CHANGELOG.zh-CN.md](docs/CHANGELOG.zh-CN.md)

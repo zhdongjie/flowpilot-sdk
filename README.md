@@ -14,8 +14,8 @@ Language:
 - Workflow-driven guidance runtime
 - UI element mapping (`ui.xxx -> selector`)
 - Highlight + tooltip rendering in Shadow DOM
-- Auto behavior capture for `click`, `form`, `route`, and `fetch`
-- Backend-driven JSON config support (`completion.rule`)
+- Auto behavior capture for `click`, `form`, and `route`
+- Unified action protocol via `FlowPilot.emit`
 
 ## Installation
 
@@ -65,8 +65,8 @@ More build options: [docs/BUILD.md](docs/BUILD.md)
 
 ## Backend-Driven Config (No Frontend Assembly)
 
-FlowPilot supports declarative completion rules in JSON.
-Your frontend can fetch config from backend and pass it directly to `FlowPilot.init`.
+Frontend can fetch workflow JSON from backend and pass it directly to `FlowPilot.init`.
+Step completion can be controlled by emitted action names.
 
 ```js
 const config = await fetch("/flowpilot/config").then((r) => r.json());
@@ -76,7 +76,14 @@ FlowPilot.init({
 });
 ```
 
-See [docs/API.md](docs/API.md) for `completion.rule` syntax.
+```js
+FlowPilot.emit({
+  type: "ACTION",
+  name: "login_success"
+});
+```
+
+See [docs/API.md](docs/API.md) for Behavior Protocol v1.
 
 ## Scope Boundary
 

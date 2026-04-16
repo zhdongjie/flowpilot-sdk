@@ -7,18 +7,12 @@
         "page": "/home",
         "type": "form",
         "highlight": "ui.form_login",
-        "action": "Fill in login form fields",
+        "action": "Validate login form",
         "behavior": {
           "type": "form",
           "completion": {
-            "type": "state",
-            "rule": {
-              "all": [
-                { "field": "source", "op": "eq", "value": "form" },
-                { "field": "formData.phone", "op": "truthy" },
-                { "field": "formData.code", "op": "truthy" }
-              ]
-            }
+            "type": "event",
+            "name": "login_form_filled"
           }
         }
       },
@@ -32,14 +26,7 @@
           "type": "form",
           "completion": {
             "type": "event",
-            "rule": {
-              "all": [
-                { "field": "source", "op": "eq", "value": "fetch" },
-                { "field": "ok", "op": "eq", "value": true },
-                { "field": "url", "op": "includes", "value": "/auth/login" },
-                { "field": "status", "op": "eq", "value": 200 }
-              ]
-            }
+            "name": "login_success"
           }
         }
       },
@@ -53,12 +40,7 @@
           "type": "route",
           "completion": {
             "type": "event",
-            "rule": {
-              "all": [
-                { "field": "source", "op": "eq", "value": "route" },
-                { "field": "pathname", "op": "eq", "value": "/customer" }
-              ]
-            }
+            "name": "route_to_customer"
           }
         }
       },
@@ -79,12 +61,7 @@
           "type": "route",
           "completion": {
             "type": "event",
-            "rule": {
-              "all": [
-                { "field": "source", "op": "eq", "value": "route" },
-                { "field": "pathname", "op": "eq", "value": "/customer/create" }
-              ]
-            }
+            "name": "route_to_customer_create"
           }
         }
       },
@@ -93,18 +70,12 @@
         "page": "/customer/create",
         "type": "form",
         "highlight": "ui.form_open_account",
-        "action": "Fill in account opening form fields",
+        "action": "Validate account opening form",
         "behavior": {
           "type": "form",
           "completion": {
-            "type": "state",
-            "rule": {
-              "all": [
-                { "field": "source", "op": "eq", "value": "form" },
-                { "field": "formData.name", "op": "truthy" },
-                { "field": "formData.idCard", "op": "truthy" }
-              ]
-            }
+            "type": "event",
+            "name": "open_account_form_filled"
           }
         }
       },
@@ -118,14 +89,7 @@
           "type": "form",
           "completion": {
             "type": "event",
-            "rule": {
-              "all": [
-                { "field": "source", "op": "eq", "value": "fetch" },
-                { "field": "ok", "op": "eq", "value": true },
-                { "field": "url", "op": "includes", "value": "/account/open" },
-                { "field": "status", "op": "eq", "value": 200 }
-              ]
-            }
+            "name": "open_account_submit_success"
           }
         }
       }

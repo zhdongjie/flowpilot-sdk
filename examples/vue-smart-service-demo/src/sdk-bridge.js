@@ -51,6 +51,21 @@ export const startFlowPilot = (taskId = "open_account") => {
   return true;
 };
 
+export const emitFlowPilotAction = (name, payload) => {
+  const FlowPilot = getFlowPilot();
+  if (!FlowPilot || typeof FlowPilot.emit !== "function") {
+    console.warn("[FlowPilot Demo] SDK emit is not available.");
+    return false;
+  }
+
+  FlowPilot.emit({
+    type: "ACTION",
+    name,
+    payload,
+  });
+  return true;
+};
+
 export const resetFlowPilot = () => {
   const FlowPilot = getFlowPilot();
   if (!FlowPilot) {

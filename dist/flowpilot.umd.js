@@ -136,84 +136,11 @@
       history.replaceState = originalReplaceState;
     };
   };
-  const inferFetchMethod = (input, init2) => {
-    if (init2 == null ? void 0 : init2.method) {
-      return init2.method.toUpperCase();
-    }
-    if (typeof Request !== "undefined" && input instanceof Request) {
-      return (input.method || "GET").toUpperCase();
-    }
-    return "GET";
-  };
-  const inferFetchUrl = (input) => {
-    if (typeof input === "string") {
-      return input;
-    }
-    if (input instanceof URL) {
-      return input.toString();
-    }
-    if (typeof Request !== "undefined" && input instanceof Request) {
-      return input.url;
-    }
-    return "";
-  };
-  const initNetworkBridge = (eventBus2) => {
-    var _a, _b;
-    if (typeof window === "undefined") {
-      return () => {
-      };
-    }
-    const cleanups = [];
-    if (typeof window.fetch === "function") {
-      const originalFetch = window.fetch.bind(window);
-      window.fetch = async (input, init2) => {
-        const response = await originalFetch(input, init2);
-        const eventPayload = {
-          source: "fetch",
-          url: response.url || inferFetchUrl(input),
-          method: inferFetchMethod(input, init2),
-          status: response.status,
-          ok: response.ok,
-          timestamp: Date.now()
-        };
-        eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
-        return response;
-      };
-      cleanups.push(() => {
-        window.fetch = originalFetch;
-      });
-    }
-    const axios = window.axios;
-    if ((_b = (_a = axios == null ? void 0 : axios.interceptors) == null ? void 0 : _a.response) == null ? void 0 : _b.use) {
-      const interceptorId = axios.interceptors.response.use((response) => {
-        var _a2, _b2;
-        const status = Number((response == null ? void 0 : response.status) || 0);
-        const eventPayload = {
-          source: "fetch",
-          url: ((_a2 = response == null ? void 0 : response.config) == null ? void 0 : _a2.url) || "",
-          method: String(((_b2 = response == null ? void 0 : response.config) == null ? void 0 : _b2.method) || "GET").toUpperCase(),
-          status,
-          ok: status >= 200 && status < 300,
-          timestamp: Date.now()
-        };
-        eventBus2.emit("BEHAVIOR_EVENT", eventPayload);
-        return response;
-      });
-      cleanups.push(() => {
-        var _a2, _b2, _c;
-        (_c = (_b2 = (_a2 = axios.interceptors) == null ? void 0 : _a2.response) == null ? void 0 : _b2.eject) == null ? void 0 : _c.call(_b2, interceptorId);
-      });
-    }
-    return () => {
-      cleanups.forEach((cleanup) => cleanup());
-    };
-  };
   const initBehaviorBridge = (eventBus2) => {
     const cleanups = [
       initClickBridge(eventBus2),
       initFormBridge(eventBus2),
-      initRouteBridge(eventBus2),
-      initNetworkBridge(eventBus2)
+      initRouteBridge(eventBus2)
     ];
     return () => {
       cleanups.forEach((cleanup) => cleanup());
@@ -258,75 +185,6 @@
     document.body.appendChild(host);
     return host.attachShadow({ mode: "open" });
   };
-  const getByPath = (input, path) => {
-    if (!path) {
-      return void 0;
-    }
-    return path.split(".").reduce((acc, key) => {
-      if (acc === null || acc === void 0) {
-        return void 0;
-      }
-      return acc[key];
-    }, input);
-  };
-  const isLeaf = (rule) => typeof rule.field === "string" && typeof rule.op === "string";
-  const evaluateLeaf = (rule, event) => {
-    const actual = getByPath(event, rule.field);
-    switch (rule.op) {
-      case "eq":
-        return actual === rule.value;
-      case "neq":
-        return actual !== rule.value;
-      case "includes":
-        if (typeof actual === "string") {
-          return typeof rule.value === "string" && actual.includes(rule.value);
-        }
-        if (Array.isArray(actual)) {
-          return actual.includes(rule.value);
-        }
-        return false;
-      case "in":
-        return Array.isArray(rule.value) && rule.value.includes(actual);
-      case "exists":
-        if (rule.value === false) {
-          return actual === null || actual === void 0;
-        }
-        return actual !== null && actual !== void 0;
-      case "truthy":
-        return Boolean(actual);
-      case "falsy":
-        return !actual;
-      case "match":
-        if (typeof actual !== "string" || typeof rule.value !== "string") {
-          return false;
-        }
-        try {
-          return new RegExp(rule.value).test(actual);
-        } catch (_error) {
-          return false;
-        }
-      default:
-        return false;
-    }
-  };
-  const evaluateBehaviorRule = (rule, event) => {
-    if (!rule) {
-      return true;
-    }
-    if (isLeaf(rule)) {
-      return evaluateLeaf(rule, event);
-    }
-    if (Array.isArray(rule.all) && rule.all.length > 0) {
-      return rule.all.every((item) => evaluateBehaviorRule(item, event));
-    }
-    if (Array.isArray(rule.any) && rule.any.length > 0) {
-      return rule.any.some((item) => evaluateBehaviorRule(item, event));
-    }
-    if (rule.not) {
-      return !evaluateBehaviorRule(rule.not, event);
-    }
-    return false;
-  };
   const normalizePathname = (path = "") => {
     const hashIndex = path.indexOf("#");
     const queryIndex = path.indexOf("?");
@@ -339,8 +197,10 @@
       this.activeStepId = null;
       this.completedSteps = /* @__PURE__ */ new Set();
       this.detachBehaviorListener = null;
+      this.detachActionListener = null;
       this.eventBus = eventBus2;
       this.bindBehaviorEvent();
+      this.bindActionEvent();
     }
     register(stepId, behavior, guideId = "") {
       this.behaviors.set(stepId, {
@@ -376,6 +236,10 @@
         this.detachBehaviorListener();
         this.detachBehaviorListener = null;
       }
+      if (this.detachActionListener) {
+        this.detachActionListener();
+        this.detachActionListener = null;
+      }
       this.reset();
     }
     bindBehaviorEvent() {
@@ -388,15 +252,30 @@
             return;
           }
           const completion = current.behavior.completion;
-          const validator = completion == null ? void 0 : completion.validator;
-          const rule = completion == null ? void 0 : completion.rule;
-          const matchedByValidator = typeof validator === "function" && validator(event);
-          const matchedByRule = typeof validator !== "function" && evaluateBehaviorRule(rule, event);
-          if (matchedByValidator || matchedByRule) {
+          if (!completion || completion.type !== "state") {
+            return;
+          }
+          const validator = completion.validator;
+          if (typeof validator === "function" && validator(event)) {
             this.complete(current, event);
           }
         }
       );
+    }
+    bindActionEvent() {
+      this.detachActionListener = this.eventBus.on("ACTION", (event) => {
+        const current = this.getCurrentStep();
+        if (!current) {
+          return;
+        }
+        const completion = current.behavior.completion;
+        if (!completion || completion.type !== "event") {
+          return;
+        }
+        if (event.name === completion.name) {
+          this.complete(current, event);
+        }
+      });
     }
     getCurrentStep() {
       if (this.activeStepId === null) {
@@ -429,7 +308,7 @@
         return {
           type: "route",
           completion: {
-            type: "event",
+            type: "state",
             validator: (event) => {
               if (event.source !== "route") {
                 return false;
@@ -446,32 +325,14 @@
         };
       }
       if (step.type === "form" || Boolean(step.form && step.form.length)) {
-        const requiredFields = step.form || [];
         return {
-          type: "form",
-          completion: {
-            type: "state",
-            validator: (event) => {
-              if (event.source !== "form") {
-                return false;
-              }
-              if (!requiredFields.length) {
-                return true;
-              }
-              return requiredFields.every(
-                (field) => {
-                  var _a;
-                  return Boolean((_a = event.formData) == null ? void 0 : _a[field.field]);
-                }
-              );
-            }
-          }
+          type: "form"
         };
       }
       return {
         type: "click",
         completion: {
-          type: "dom",
+          type: "state",
           validator: (event) => {
             if (event.source !== "click") {
               return false;
@@ -1120,7 +981,7 @@
         return;
       }
       const behaviorEvent = stepComplete == null ? void 0 : stepComplete.event;
-      if ((behaviorEvent == null ? void 0 : behaviorEvent.source) === "route" && typeof behaviorEvent.pathname === "string") {
+      if (behaviorEvent && "source" in behaviorEvent && behaviorEvent.source === "route" && typeof behaviorEvent.pathname === "string") {
         this.stateMachine.updatePage(behaviorEvent.pathname);
       }
       this.clearElementRetry();
@@ -1354,6 +1215,9 @@
     }
     state.runtime.start(intent);
   };
+  const emit = (event) => {
+    eventBus.emit("ACTION", event);
+  };
   const reset = () => {
     var _a;
     (_a = state.runtime) == null ? void 0 : _a.reset();
@@ -1377,6 +1241,7 @@
   const FlowPilot = {
     init,
     start,
+    emit,
     reset,
     destroy,
     version: VERSION

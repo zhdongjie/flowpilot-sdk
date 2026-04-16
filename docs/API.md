@@ -10,7 +10,7 @@ Returns SDK runtime version string.
 
 ## `FlowPilot.init(config)`
 
-Initializes the runtime once per page lifecycle.
+Initializes runtime once per page lifecycle.
 
 ### `config`
 
@@ -24,79 +24,71 @@ Initializes the runtime once per page lifecycle.
 - `onFinish?`: `() => void`
 - `onError?`: `(error) => void`
 
-### Backend-driven config pattern
-
-Frontend can load JSON from backend and pass it directly:
-
-```js
-const config = await fetch("/flowpilot/config").then((r) => r.json());
-FlowPilot.init({
-  workflow: config.workflow,
-  mapping: config.mapping
-});
-```
-
 ## `FlowPilot.start(taskId)`
 
 Starts a workflow by id.
 
 - `taskId`: `string`
 
+## `FlowPilot.emit(event)`
+
+Unified non-intrusive behavior event API.
+
+```ts
+FlowPilot.emit({
+  type: "ACTION",
+  name: "login_success",
+  payload: { userId: "u_123" }
+});
+```
+
+Event shape:
+
+```ts
+type ActionEvent = {
+  type: "ACTION";
+  name: string;
+  payload?: any;
+};
+```
+
 ## `FlowPilot.reset()`
 
-Resets current flow state and active runtime status.
+Resets current flow state.
 
 ## `FlowPilot.destroy()`
 
-Destroys runtime, listeners, and Shadow DOM host.
+Destroys runtime and listeners.
 
-## Completion Rule DSL (`step.behavior.completion.rule`)
+## Behavior Protocol v1
 
-Use rule DSL when you want pure JSON config (no frontend function assembly).
+Behavior completion supports two modes:
 
-### Example
+```ts
+type Completion =
+  | { type: "event"; name: string }
+  | { type: "state"; validator: (ctx: any) => boolean };
+```
+
+### Event mode (recommended for backend JSON configs)
 
 ```json
 {
-  "type": "form",
-  "completion": {
-    "type": "event",
-    "rule": {
-      "all": [
-        { "field": "source", "op": "eq", "value": "fetch" },
-        { "field": "ok", "op": "eq", "value": true },
-        { "field": "url", "op": "includes", "value": "/auth/login" },
-        { "field": "status", "op": "eq", "value": 200 }
-      ]
-    }
-  }
+  "type": "event",
+  "name": "login_success"
 }
 ```
 
-### Operators
+SDK completes the active step when `FlowPilot.emit({ type: "ACTION", name: "login_success" })` is called.
 
-- `eq`: strict equals
-- `neq`: strict not equals
-- `includes`: string contains or array contains
-- `in`: value exists in provided array
-- `exists`: field exists (`true`) or does not exist (`false`)
-- `truthy`: JS truthy
-- `falsy`: JS falsy
-- `match`: regex match (pattern string)
+### State mode
 
-### Rule composition
+Use function validator for in-code configurations.
 
-- `all`: all child rules must match
-- `any`: at least one child rule matches
-- `not`: negates a child rule
+## Built-in automatic sources
 
-## Auto-captured behavior events
+- `click`: kept as DOM-based automatic behavior.
+- `form`: captured for context, but not auto-completed unless validator is configured.
+- `fetch/axios`: no SDK interception, no SDK network hijacking.
 
-SDK bridge layer captures:
-
-- `click`
-- `form submit`
-- `route changes`
-- `fetch / axios responses`
-
-These events are used for behavior-based step completion.
+This keeps runtime non-intrusive and behavior fully controllable.

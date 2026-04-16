@@ -2,14 +2,12 @@ import { EventBus } from "../eventBus";
 import { initClickBridge } from "./clickBridge";
 import { initFormBridge } from "./formBridge";
 import { initRouteBridge } from "./routeBridge";
-import { initNetworkBridge } from "./networkBridge";
 
 export const initBehaviorBridge = (eventBus: EventBus) => {
   const cleanups = [
     initClickBridge(eventBus),
     initFormBridge(eventBus),
     initRouteBridge(eventBus),
-    initNetworkBridge(eventBus),
   ];
 
   return () => {
@@ -17,4 +15,4 @@ export const initBehaviorBridge = (eventBus: EventBus) => {
   };
 };
 
-export { initClickBridge, initFormBridge, initRouteBridge, initNetworkBridge };
+export { initClickBridge, initFormBridge, initRouteBridge };

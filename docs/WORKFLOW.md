@@ -13,18 +13,12 @@ A workflow is the core guidance definition.
       "type": "form",
       "page": "/home",
       "highlight": "ui.form_login",
-      "action": "Fill in login form fields",
+      "action": "Validate login form",
       "behavior": {
         "type": "form",
         "completion": {
-          "type": "state",
-          "rule": {
-            "all": [
-              { "field": "source", "op": "eq", "value": "form" },
-              { "field": "formData.phone", "op": "truthy" },
-              { "field": "formData.code", "op": "truthy" }
-            ]
-          }
+          "type": "event",
+          "name": "login_form_filled"
         }
       }
     }
@@ -43,9 +37,17 @@ A workflow is the core guidance definition.
 - `form?`: form fields metadata
 - `behavior?`: completion behavior
 
+## Completion Modes
+
+```ts
+type Completion =
+  | { type: "event"; name: string }
+  | { type: "state"; validator: (ctx: any) => boolean };
+```
+
 ## Best Practices
 
 - Keep one clear user action per step.
 - Use stable `highlight` keys (`ui.xxx`) and map selectors separately.
-- Prefer JSON `completion.rule` for backend-delivered config.
-- Keep workflow business-specific; keep SDK generic.
+- Prefer event completion (`type: "event"`) for backend-delivered JSON workflows.
+- Use `FlowPilot.emit({ type: "ACTION", name })` in business code to advance steps.

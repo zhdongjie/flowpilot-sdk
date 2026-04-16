@@ -1,6 +1,0 @@
-﻿# Release Guide
-
-Canonical release guide is maintained in:
-
-- [docs/RELEASE.md](docs/RELEASE.md)
-- [docs/RELEASE.zh-CN.md](docs/RELEASE.zh-CN.md)

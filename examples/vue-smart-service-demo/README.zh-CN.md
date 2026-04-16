@@ -8,6 +8,7 @@
 - 业务层智能客服面板
 - Mock 接口模拟（`/flowpilot/config`、`/chat`、`/auth/login`、`/account/open`）
 - 直接使用后端风格 JSON 配置初始化 SDK
+- 通过 `FlowPilot.emit({ type: "ACTION", name })` 控制步骤推进
 
 ## 运行
 

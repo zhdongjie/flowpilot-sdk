@@ -14,8 +14,8 @@ FlowPilot 是一个前端引导 SDK，用于在产品中实现分步式任务引
 - 基于 Workflow 的引导运行时
 - UI 映射机制（`ui.xxx -> selector`）
 - Shadow DOM 高亮与提示渲染
-- 自动行为捕获（`click`、`form`、`route`、`fetch`）
-- 支持后端下发 JSON 规则（`completion.rule`）
+- 自动行为捕获（`click`、`form`、`route`）
+- 通过 `FlowPilot.emit` 统一动作协议
 
 ## 安装
 
@@ -65,8 +65,8 @@ npm run build
 
 ## 后端驱动配置（前端零组装）
 
-FlowPilot 支持声明式 JSON 完成规则。
 前端可直接请求后端配置并传入 `FlowPilot.init`。
+步骤完成可通过事件名由业务层显式控制。
 
 ```js
 const config = await fetch("/flowpilot/config").then((r) => r.json());
@@ -76,7 +76,14 @@ FlowPilot.init({
 });
 ```
 
-`completion.rule` 语法见 [docs/API.zh-CN.md](docs/API.zh-CN.md)。
+```js
+FlowPilot.emit({
+  type: "ACTION",
+  name: "login_success"
+});
+```
+
+行为协议 v1 见 [docs/API.zh-CN.md](docs/API.zh-CN.md)。
 
 ## 责任边界
 

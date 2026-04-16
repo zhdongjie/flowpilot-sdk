@@ -244,7 +244,7 @@
 import { nextTick, onMounted, ref } from "vue";
 import { login, submitOpenAccount } from "../api/bank";
 import { sendChat } from "../api/chat";
-import { resetFlowPilot, startFlowPilot } from "../sdk-bridge";
+import { emitFlowPilotAction, resetFlowPilot, startFlowPilot } from "../sdk-bridge";
 
 const HOME_PATH = "/home";
 const CUSTOMER_PATH = "/customer";
@@ -423,6 +423,9 @@ const selectMenu = (key) => {
   activeMenu.value = key;
   if (key === "open") {
     goToForm();
+    emitFlowPilotAction("route_to_customer_create", {
+      pathname: CUSTOMER_CREATE_PATH,
+    });
   }
 };
 
@@ -440,11 +443,15 @@ const handleLogin = async () => {
     return;
   }
 
+  emitFlowPilotAction("login_form_filled", { phone });
+
   loginLoading.value = true;
   try {
     const data = await login(phone, code);
+    emitFlowPilotAction("login_success", { phone });
     loginMessage.value = data.intro || "Login success.";
     goToMenu();
+    emitFlowPilotAction("route_to_customer", { pathname: CUSTOMER_PATH });
   } catch (err) {
     loginMessage.value = "Login failed, please retry.";
   } finally {
@@ -463,6 +470,11 @@ const handleSubmit = async () => {
     return;
   }
 
+  emitFlowPilotAction("open_account_form_filled", {
+    name: formName.value.trim(),
+    idCard: formIdCard.value.trim(),
+  });
+
   formLoading.value = true;
   try {
     const data = await submitOpenAccount({
@@ -474,6 +486,7 @@ const handleSubmit = async () => {
       note: formNote.value.trim(),
     });
 
+    emitFlowPilotAction("open_account_submit_success");
     formMessage.value = data.intro || "Application submitted.";
   } catch (err) {
     formMessage.value = "Submit failed, please retry.";

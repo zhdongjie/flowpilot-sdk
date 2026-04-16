@@ -8,6 +8,7 @@ A standalone Vue demo that shows how to integrate FlowPilot with a smart-service
 - Smart service panel in business layer
 - Mock API simulation (`/flowpilot/config`, `/chat`, `/auth/login`, `/account/open`)
 - Direct SDK init from backend-style JSON config
+- Step progression via `FlowPilot.emit({ type: "ACTION", name })`
 
 ## Run
 

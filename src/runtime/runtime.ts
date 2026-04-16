@@ -107,7 +107,12 @@ export class FlowPilotRuntime {
     }
 
     const behaviorEvent = stepComplete?.event;
-    if (behaviorEvent?.source === "route" && typeof behaviorEvent.pathname === "string") {
+    if (
+      behaviorEvent &&
+      "source" in behaviorEvent &&
+      behaviorEvent.source === "route" &&
+      typeof behaviorEvent.pathname === "string"
+    ) {
       this.stateMachine.updatePage(behaviorEvent.pathname);
     }
 

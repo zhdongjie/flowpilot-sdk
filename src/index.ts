@@ -1,5 +1,6 @@
 import type { InitConfig, Workflow } from "./types";
 import { initBehaviorBridge } from "./behavior/bridge";
+import type { ActionEvent } from "./behavior/protocol";
 import { eventBus } from "./behavior/eventBus";
 import { mountShadowRoot } from "./runtime/shadow";
 import { FlowPilotRuntime } from "./runtime/runtime";
@@ -75,6 +76,10 @@ const start = (intent: string) => {
   state.runtime.start(intent);
 };
 
+const emit = (event: ActionEvent) => {
+  eventBus.emit("ACTION", event);
+};
+
 const reset = () => {
   state.runtime?.reset();
 };
@@ -98,6 +103,7 @@ const destroy = () => {
 const FlowPilot = {
   init,
   start,
+  emit,
   reset,
   destroy,
   version: VERSION,

@@ -1,7 +1,6 @@
 import type { Step } from "../types";
 import { EventBus } from "./eventBus";
-import type { BehaviorEvent } from "./protocol";
-import { evaluateBehaviorRule } from "./rule";
+import type { ActionEvent, BehaviorEvent } from "./protocol";
 import type { StepBehavior } from "./types";
 
 type RegisteredBehavior = {
@@ -28,10 +27,12 @@ export class BehaviorEngine {
   private activeStepId: number | null = null;
   private completedSteps = new Set<number>();
   private detachBehaviorListener: (() => void) | null = null;
+  private detachActionListener: (() => void) | null = null;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
     this.bindBehaviorEvent();
+    this.bindActionEvent();
   }
 
   register(stepId: number, behavior: StepBehavior, guideId = "") {
@@ -74,6 +75,10 @@ export class BehaviorEngine {
       this.detachBehaviorListener();
       this.detachBehaviorListener = null;
     }
+    if (this.detachActionListener) {
+      this.detachActionListener();
+      this.detachActionListener = null;
+    }
     this.reset();
   }
 
@@ -89,17 +94,34 @@ export class BehaviorEngine {
         }
 
         const completion = current.behavior.completion;
-        const validator = completion?.validator;
-        const rule = completion?.rule;
-        const matchedByValidator = typeof validator === "function" && validator(event);
-        const matchedByRule =
-          typeof validator !== "function" && evaluateBehaviorRule(rule, event);
+        if (!completion || completion.type !== "state") {
+          return;
+        }
 
-        if (matchedByValidator || matchedByRule) {
+        const validator = completion.validator;
+        if (typeof validator === "function" && validator(event)) {
           this.complete(current, event);
         }
       }
     );
+  }
+
+  private bindActionEvent() {
+    this.detachActionListener = this.eventBus.on<ActionEvent>("ACTION", (event) => {
+      const current = this.getCurrentStep();
+      if (!current) {
+        return;
+      }
+
+      const completion = current.behavior.completion;
+      if (!completion || completion.type !== "event") {
+        return;
+      }
+
+      if (event.name === completion.name) {
+        this.complete(current, event);
+      }
+    });
   }
 
   private getCurrentStep() {
@@ -116,7 +138,7 @@ export class BehaviorEngine {
     return current;
   }
 
-  private complete(step: RegisteredBehavior, event: BehaviorEvent) {
+  private complete(step: RegisteredBehavior, event: BehaviorEvent | ActionEvent) {
     if (this.completedSteps.has(step.stepId)) {
       return;
     }
@@ -137,7 +159,7 @@ export class BehaviorEngine {
       return {
         type: "route",
         completion: {
-          type: "event",
+          type: "state",
           validator: (event: BehaviorEvent) => {
             if (event.source !== "route") {
               return false;
@@ -155,30 +177,15 @@ export class BehaviorEngine {
     }
 
     if (step.type === "form" || Boolean(step.form && step.form.length)) {
-      const requiredFields = step.form || [];
       return {
         type: "form",
-        completion: {
-          type: "state",
-          validator: (event: BehaviorEvent) => {
-            if (event.source !== "form") {
-              return false;
-            }
-            if (!requiredFields.length) {
-              return true;
-            }
-            return requiredFields.every((field) =>
-              Boolean(event.formData?.[field.field])
-            );
-          },
-        },
       };
     }
 
     return {
       type: "click",
       completion: {
-        type: "dom",
+        type: "state",
         validator: (event: BehaviorEvent) => {
           if (event.source !== "click") {
             return false;
