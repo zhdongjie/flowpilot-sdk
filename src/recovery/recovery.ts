@@ -1,25 +1,27 @@
-import type { DomAdapter } from "../adapter/dom";
 import type { Workflow } from "../core/types";
-import { reconcileStepIndex } from "./reconcile";
+import type { ValidationResult } from "./validator";
 
-export type RecoveryResult =
-  | { type: "jump"; index: number }
-  | { type: "reset"; index: number };
+export type RecoveryStrategy =
+  | { type: "retry"; reason: ValidationResult["reason"] }
+  | { type: "remap"; reason: ValidationResult["reason"] }
+  | { type: "reset"; reason: ValidationResult["reason"] };
 
-export class RecoveryManager {
-  private adapter: DomAdapter;
-
-  constructor(adapter: DomAdapter) {
-    this.adapter = adapter;
+export const decideRecovery = (
+  workflow: Workflow,
+  currentIndex: number,
+  validation: ValidationResult
+): RecoveryStrategy => {
+  if (!workflow.steps.length || currentIndex < 0 || currentIndex >= workflow.steps.length) {
+    return { type: "reset", reason: validation.reason };
   }
 
-  recover(workflow: Workflow, currentIndex: number): RecoveryResult {
-    const reconciledIndex = reconcileStepIndex(workflow, currentIndex, this.adapter);
-
-    if (typeof reconciledIndex === "number") {
-      return { type: "jump", index: reconciledIndex };
-    }
-
-    return { type: "reset", index: 0 };
+  if (validation.reason === "page-mismatch" || validation.reason === "element-missing") {
+    return { type: "remap", reason: validation.reason };
   }
-}
+
+  if (validation.reason === "trigger-mismatch" || validation.reason === "element-mismatch") {
+    return { type: "retry", reason: validation.reason };
+  }
+
+  return { type: "reset", reason: validation.reason };
+};

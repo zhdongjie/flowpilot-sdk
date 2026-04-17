@@ -1,66 +1,39 @@
-﻿{
+{
   "workflow": {
     "id": "open_account",
     "steps": [
       {
-        "id": "step_1",
+        "id": "step_login_submit",
         "type": "form",
         "highlight": "ui.form_login",
-        "desc": "Validate login form"
+        "desc": "Submit the login form to enter customer service center"
       },
       {
-        "id": "step_2",
-        "type": "form",
-        "highlight": "ui.btn_login",
-        "desc": "Submit login"
-      },
-      {
-        "id": "step_3",
-        "type": "route",
-        "highlight": "ui.btn_login",
-        "desc": "Navigate to customer center"
-      },
-      {
-        "id": "step_4",
+        "id": "step_menu_open_account",
         "type": "click",
         "highlight": "ui.menu_open_account",
-        "desc": "Click Open Account"
+        "desc": "Choose Open Account after arriving at customer service center"
       },
       {
-        "id": "step_5",
-        "type": "route",
-        "highlight": "ui.menu_open_account",
-        "desc": "Navigate to account form page"
-      },
-      {
-        "id": "step_6",
+        "id": "step_submit_application",
         "type": "form",
         "highlight": "ui.form_open_account",
-        "desc": "Validate account opening form"
-      },
-      {
-        "id": "step_7",
-        "type": "form",
-        "highlight": "ui.btn_submit_application",
-        "desc": "Submit and wait for successful API response"
+        "desc": "Submit the account opening form for review"
       }
     ]
   },
   "mapping": {
     "ui.form_login": {
-      "selector": "[data-guide-id='ui.form_login']"
-    },
-    "ui.btn_login": {
-      "selector": "[data-guide-id='ui.btn_login']"
+      "selector": "[data-guide-id='ui.form_login']",
+      "pages": ["/home"]
     },
     "ui.menu_open_account": {
-      "selector": "[data-guide-id='ui.menu_open_account']"
+      "selector": "[data-guide-id='ui.menu_open_account']",
+      "pages": ["/customer"]
     },
     "ui.form_open_account": {
-      "selector": "[data-guide-id='ui.form_open_account']"
-    },
-    "ui.btn_submit_application": {
-      "selector": "[data-guide-id='ui.btn_submit_application']"
+      "selector": "[data-guide-id='ui.form_open_account']",
+      "pages": ["/customer/create"]
     }
   }
 }

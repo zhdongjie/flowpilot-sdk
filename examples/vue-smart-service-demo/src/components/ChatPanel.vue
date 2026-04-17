@@ -241,14 +241,23 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { login, submitOpenAccount } from "../api/bank";
 import { sendChat } from "../api/chat";
-import { emitFlowPilotAction, resetFlowPilot, startFlowPilot } from "../sdk-bridge";
+import {
+  resetFlowPilot,
+  startFlowPilot,
+  subscribeFlowPilot,
+} from "../sdk-bridge";
 
 const HOME_PATH = "/home";
 const CUSTOMER_PATH = "/customer";
 const CUSTOMER_CREATE_PATH = "/customer/create";
+const STEP_NUMBER_BY_ID = {
+  step_login_submit: 1,
+  step_menu_open_account: 2,
+  step_submit_application: 3,
+};
 
 const activePage = ref("login");
 const activeMenu = ref("");
@@ -270,6 +279,7 @@ const serviceLoading = ref(false);
 const serviceCurrentStep = ref(null);
 const guideStarted = ref(false);
 const serviceMessages = ref([]);
+let disposeFlowPilotSubscription = null;
 
 const appendServiceMessage = (role, text) => {
   const cleanText = String(text || "").trim();
@@ -289,6 +299,18 @@ const resetServiceState = () => {
     "assistant",
     "Hello, I am the smart service in this test project. Ask for open account to start the guide."
   );
+};
+
+const handleFlowPilotStepChange = (step) => {
+  const nextStepNumber = STEP_NUMBER_BY_ID[step?.id] || null;
+  serviceCurrentStep.value = nextStepNumber;
+  guideStarted.value = true;
+};
+
+const handleFlowPilotFinish = () => {
+  serviceCurrentStep.value = null;
+  guideStarted.value = false;
+  appendServiceMessage("assistant", "Guide completed. The open-account flow is finished.");
 };
 
 const startGuideFromService = (source) => {
@@ -395,8 +417,17 @@ const goToForm = (replace = false) => {
 };
 
 onMounted(() => {
+  disposeFlowPilotSubscription = subscribeFlowPilot({
+    onStepChange: handleFlowPilotStepChange,
+    onFinish: handleFlowPilotFinish,
+  });
   goToLogin(true);
   resetServiceState();
+});
+
+onBeforeUnmount(() => {
+  disposeFlowPilotSubscription?.();
+  disposeFlowPilotSubscription = null;
 });
 
 const resetDemo = () => {
@@ -422,11 +453,7 @@ const resetDemo = () => {
 const selectMenu = (key) => {
   activeMenu.value = key;
   if (key === "open") {
-    emitFlowPilotAction("menu_open_account_clicked");
     goToForm();
-    emitFlowPilotAction("route_to_customer_create", {
-      pathname: CUSTOMER_CREATE_PATH,
-    });
   }
 };
 
@@ -444,15 +471,11 @@ const handleLogin = async () => {
     return;
   }
 
-  emitFlowPilotAction("login_form_filled", { phone });
-
   loginLoading.value = true;
   try {
     const data = await login(phone, code);
-    emitFlowPilotAction("login_success", { phone });
     loginMessage.value = data.intro || "Login success.";
     goToMenu();
-    emitFlowPilotAction("route_to_customer", { pathname: CUSTOMER_PATH });
   } catch (err) {
     loginMessage.value = "Login failed, please retry.";
   } finally {
@@ -471,11 +494,6 @@ const handleSubmit = async () => {
     return;
   }
 
-  emitFlowPilotAction("open_account_form_filled", {
-    name: formName.value.trim(),
-    idCard: formIdCard.value.trim(),
-  });
-
   formLoading.value = true;
   try {
     const data = await submitOpenAccount({
@@ -487,7 +505,6 @@ const handleSubmit = async () => {
       note: formNote.value.trim(),
     });
 
-    emitFlowPilotAction("open_account_submit_success");
     formMessage.value = data.intro || "Application submitted.";
   } catch (err) {
     formMessage.value = "Submit failed, please retry.";

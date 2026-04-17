@@ -1,16 +1,16 @@
 export type StepType = "click" | "form" | "route";
 
-export type Step = {
+export type Step = Readonly<{
   id: string;
   type: StepType;
   highlight: string;
   desc?: string;
-};
+}>;
 
-export type Workflow = {
+export type Workflow = Readonly<{
   id: string;
-  steps: Step[];
-};
+  steps: readonly Step[];
+}>;
 
 export type MappingEntry =
   | string
@@ -31,4 +31,39 @@ export type InitConfig = {
   onStepChange?: (step: Step) => void;
   onFinish?: () => void;
   onError?: (err: Error) => void;
+};
+
+export type FlowPilotEventSource = "user" | "system" | "sdk";
+
+export type FlowPilotEventTrigger = StepType | "manual";
+
+export type FlowPilotEventElement = {
+  selector?: string;
+  guideId?: string;
+  text?: string;
+};
+
+export type FlowPilotEventMeta = {
+  timestamp: number;
+  source: FlowPilotEventSource;
+  trigger: FlowPilotEventTrigger;
+  page: string;
+  stepId?: string;
+  workflowId?: string;
+  element?: FlowPilotEventElement;
+  context?: Record<string, any>;
+};
+
+export type ActionEvent = {
+  type: "ACTION";
+  name: string;
+  payload?: any;
+  meta: FlowPilotEventMeta;
+};
+
+export type ActionEventInput = {
+  type?: "ACTION";
+  name: string;
+  payload?: any;
+  meta?: Partial<FlowPilotEventMeta>;
 };

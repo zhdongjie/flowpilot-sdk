@@ -4,34 +4,53 @@ const normalizeType = (value) => {
   }
   return "click";
 };
-const normalizeStep = (raw, index) => {
-  const idCandidate = (raw == null ? void 0 : raw.id) ?? (raw == null ? void 0 : raw.step);
-  const id = typeof idCandidate === "string" ? idCandidate : typeof idCandidate === "number" ? String(idCandidate) : String(index + 1);
-  const typeCandidate = (raw == null ? void 0 : raw.type) ?? (Array.isArray(raw == null ? void 0 : raw.form) && raw.form.length ? "form" : "click");
-  const highlight = typeof (raw == null ? void 0 : raw.highlight) === "string" ? raw.highlight : "";
-  const desc = typeof (raw == null ? void 0 : raw.desc) === "string" ? raw.desc : typeof (raw == null ? void 0 : raw.action) === "string" ? raw.action : void 0;
-  return {
-    id,
-    type: normalizeType(typeCandidate),
-    highlight,
-    desc
-  };
+const normalizeId = (value, index) => {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return String(index + 1);
 };
-const normalizeWorkflow = (raw) => {
+const normalizeDescription = (raw) => {
+  if (typeof (raw == null ? void 0 : raw.desc) === "string" && raw.desc.trim()) {
+    return raw.desc.trim();
+  }
+  if (typeof (raw == null ? void 0 : raw.action) === "string" && raw.action.trim()) {
+    return raw.action.trim();
+  }
+  return void 0;
+};
+const normalizeStep = (raw, index) => {
+  const typeCandidate = (raw == null ? void 0 : raw.type) ?? (Array.isArray(raw == null ? void 0 : raw.form) && raw.form.length > 0 ? "form" : "click");
+  const desc = normalizeDescription(raw);
+  const step = {
+    id: normalizeId((raw == null ? void 0 : raw.id) ?? (raw == null ? void 0 : raw.step), index),
+    type: normalizeType(typeCandidate),
+    highlight: typeof (raw == null ? void 0 : raw.highlight) === "string" ? raw.highlight.trim() : "",
+    ...desc ? { desc } : {}
+  };
+  return Object.freeze(step);
+};
+const normalizeWorkflow = (raw, index) => {
   if (!raw || typeof raw !== "object") {
     return null;
   }
-  const id = typeof raw.id === "string" && raw.id.trim() ? raw.id : "default";
+  const id = typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : index === 0 ? "default" : `workflow_${index + 1}`;
   const sourceSteps = Array.isArray(raw.steps) ? raw.steps : [];
   const steps = sourceSteps.map((step, idx) => normalizeStep(step, idx));
   if (!steps.length) {
     return null;
   }
-  return { id, steps };
+  return Object.freeze({
+    id,
+    steps: Object.freeze(steps.slice())
+  });
 };
 const normalizeWorkflows = (input) => {
   const rawList = Array.isArray(input) ? input : [input];
-  const normalized = rawList.map((item) => normalizeWorkflow(item)).filter((item) => Boolean(item));
+  const normalized = rawList.map((item, index) => normalizeWorkflow(item, index)).filter((item) => Boolean(item));
   if (normalized.length) {
     return normalized;
   }
@@ -48,10 +67,15 @@ const getTargetText = (target) => {
 class BehaviorListener {
   constructor(eventBus, options) {
     this.detachFns = [];
+    this.started = false;
     this.eventBus = eventBus;
     this.getCurrentPage = options.getCurrentPage;
   }
   start() {
+    if (this.started) {
+      return;
+    }
+    this.started = true;
     if (typeof document !== "undefined") {
       this.bindClick();
       this.bindForm();
@@ -63,6 +87,7 @@ class BehaviorListener {
   stop() {
     this.detachFns.forEach((dispose) => dispose());
     this.detachFns = [];
+    this.started = false;
   }
   bindClick() {
     const onClick = (event) => {
@@ -184,26 +209,152 @@ class BehaviorListener {
     });
   }
 }
-const createHighlight = (root) => {
-  const highlight = document.createElement("div");
-  highlight.className = "fp-highlight";
-  highlight.style.display = "none";
-  root.appendChild(highlight);
-  const maskTop = document.createElement("div");
-  const maskLeft = document.createElement("div");
-  const maskRight = document.createElement("div");
-  const maskBottom = document.createElement("div");
-  [maskTop, maskLeft, maskRight, maskBottom].forEach((el) => {
-    el.className = "fp-mask-piece";
-    el.style.display = "none";
-    root.appendChild(el);
-  });
-  const update = (rect) => {
+const STYLE_TEXT = `
+:host { all: initial; }
+* { box-sizing: border-box; font-family: "Noto Sans SC", sans-serif; }
+.fp-highlight {
+  position: fixed;
+  border: 2px solid #f1b256;
+  border-radius: 12px;
+  box-shadow: 0 0 0 6px rgba(241, 178, 86, 0.22);
+  pointer-events: none;
+  z-index: 9999;
+  display: none;
+}
+.fp-mask-piece {
+  position: fixed;
+  background: rgba(12, 18, 28, 0.5);
+  pointer-events: none;
+  z-index: 9998;
+  display: none;
+}
+.fp-tooltip {
+  position: fixed;
+  background: #0f1b2b;
+  color: #f7f9fc;
+  padding: 12px 14px;
+  border-radius: 12px;
+  max-width: 300px;
+  font-size: 12px;
+  line-height: 1.5;
+  pointer-events: none;
+  z-index: 10000;
+  display: none;
+}
+.fp-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.fp-tooltip-reason {
+  opacity: 0.8;
+}
+`;
+const normalizeEntry = (entry) => {
+  if (!entry) {
+    return { selector: "", fallback: [], pages: [] };
+  }
+  if (typeof entry === "string") {
+    return { selector: entry, fallback: [], pages: [] };
+  }
+  return {
+    selector: typeof entry.selector === "string" ? entry.selector : "",
+    fallback: Array.isArray(entry.fallback) ? entry.fallback.filter(Boolean) : [],
+    pages: Array.isArray(entry.pages) ? entry.pages.filter(Boolean) : []
+  };
+};
+const ensureShadowRoot = () => {
+  const existing = document.getElementById("flowpilot-root");
+  if (existing == null ? void 0 : existing.shadowRoot) {
+    return existing.shadowRoot;
+  }
+  const host = document.createElement("div");
+  host.id = "flowpilot-root";
+  (document.body || document.documentElement).appendChild(host);
+  return host.attachShadow({ mode: "open" });
+};
+class GuideRenderer {
+  constructor(root) {
+    this.activeElement = null;
+    this.activeTooltip = null;
+    this.onGlobalUpdate = () => {
+      this.refresh();
+    };
+    this.root = root;
+    this.style = document.createElement("style");
+    this.style.textContent = STYLE_TEXT;
+    this.root.appendChild(this.style);
+    this.highlight = document.createElement("div");
+    this.highlight.className = "fp-highlight";
+    this.root.appendChild(this.highlight);
+    this.masks = Array.from({ length: 4 }, () => {
+      const piece = document.createElement("div");
+      piece.className = "fp-mask-piece";
+      this.root.appendChild(piece);
+      return piece;
+    });
+    this.tooltip = document.createElement("div");
+    this.tooltip.className = "fp-tooltip";
+    this.tooltipTitle = document.createElement("div");
+    this.tooltipTitle.className = "fp-tooltip-title";
+    this.tooltipReason = document.createElement("div");
+    this.tooltipReason.className = "fp-tooltip-reason";
+    this.tooltip.appendChild(this.tooltipTitle);
+    this.tooltip.appendChild(this.tooltipReason);
+    this.root.appendChild(this.tooltip);
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", this.onGlobalUpdate);
+      window.addEventListener("scroll", this.onGlobalUpdate, true);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("transitionend", this.onGlobalUpdate, true);
+      document.addEventListener("animationend", this.onGlobalUpdate, true);
+    }
+  }
+  render(element, tooltip) {
+    this.activeElement = element;
+    this.activeTooltip = tooltip;
+    this.refresh();
+  }
+  clear() {
+    this.activeElement = null;
+    this.activeTooltip = null;
+    this.hideHighlight();
+    this.hideTooltip();
+  }
+  destroy() {
+    if (typeof window !== "undefined") {
+      window.removeEventListener("resize", this.onGlobalUpdate);
+      window.removeEventListener("scroll", this.onGlobalUpdate, true);
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("transitionend", this.onGlobalUpdate, true);
+      document.removeEventListener("animationend", this.onGlobalUpdate, true);
+    }
+    this.clear();
+    this.highlight.remove();
+    this.masks.forEach((piece) => piece.remove());
+    this.tooltip.remove();
+    this.style.remove();
+  }
+  refresh() {
+    var _a;
+    if (!((_a = this.activeTooltip) == null ? void 0 : _a.message)) {
+      this.hideHighlight();
+      this.hideTooltip();
+      return;
+    }
+    if (!this.activeElement || !this.activeElement.isConnected) {
+      this.hideHighlight();
+      this.updateTooltip(null, this.activeTooltip);
+      return;
+    }
+    const rect = this.activeElement.getBoundingClientRect();
+    this.updateHighlight(rect);
+    this.updateTooltip(rect, this.activeTooltip);
+  }
+  updateHighlight(rect) {
     if (!rect || rect.width <= 1 || rect.height <= 1) {
-      highlight.style.display = "none";
-      [maskTop, maskLeft, maskRight, maskBottom].forEach((el) => {
-        el.style.display = "none";
-      });
+      this.hideHighlight();
       return;
     }
     const pad = 8;
@@ -212,11 +363,12 @@ const createHighlight = (root) => {
     const right = Math.min(rect.left + rect.width + pad, window.innerWidth);
     const bottom = Math.min(rect.top + rect.height + pad, window.innerHeight);
     const middleHeight = Math.max(bottom - top, 0);
-    highlight.style.display = "block";
-    highlight.style.top = `${top}px`;
-    highlight.style.left = `${left}px`;
-    highlight.style.width = `${right - left}px`;
-    highlight.style.height = `${middleHeight}px`;
+    const [maskTop, maskLeft, maskRight, maskBottom] = this.masks;
+    this.highlight.style.display = "block";
+    this.highlight.style.top = `${top}px`;
+    this.highlight.style.left = `${left}px`;
+    this.highlight.style.width = `${right - left}px`;
+    this.highlight.style.height = `${middleHeight}px`;
     maskTop.style.display = "block";
     maskTop.style.top = "0px";
     maskTop.style.left = "0px";
@@ -237,193 +389,43 @@ const createHighlight = (root) => {
     maskRight.style.left = `${right}px`;
     maskRight.style.width = `${window.innerWidth - right}px`;
     maskRight.style.height = `${middleHeight}px`;
-  };
-  const destroy2 = () => {
-    highlight.remove();
-    [maskTop, maskLeft, maskRight, maskBottom].forEach((el) => el.remove());
-  };
-  return { update, destroy: destroy2 };
-};
-const createTooltip = (root) => {
-  const tooltip = document.createElement("div");
-  tooltip.className = "fp-tooltip";
-  tooltip.style.display = "none";
-  root.appendChild(tooltip);
-  const update = (rect, options) => {
-    if (!rect || !options.message) {
-      tooltip.style.display = "none";
-      tooltip.innerHTML = "";
+  }
+  updateTooltip(rect, tooltip) {
+    this.tooltip.style.display = "block";
+    this.tooltipTitle.textContent = tooltip.message;
+    this.tooltipReason.textContent = tooltip.reason;
+    this.tooltipReason.style.display = tooltip.reason ? "block" : "none";
+    if (!rect) {
+      const left2 = Math.max(12, window.innerWidth - 332);
+      this.tooltip.style.top = "20px";
+      this.tooltip.style.left = `${left2}px`;
       return;
     }
-    tooltip.style.display = "block";
     const margin = 12;
     const rawTop = rect.bottom + margin;
-    const maxLeft = window.innerWidth - 300;
+    const maxLeft = window.innerWidth - 320;
     const left = Math.max(12, Math.min(rect.left, maxLeft));
     const top = rawTop + 120 > window.innerHeight ? Math.max(12, rect.top - 80) : rawTop;
-    tooltip.style.top = `${top}px`;
-    tooltip.style.left = `${left}px`;
-    tooltip.innerHTML = "";
-    const title = document.createElement("div");
-    title.className = "fp-tooltip-title";
-    title.textContent = options.message || "";
-    tooltip.appendChild(title);
-    if (options.reason) {
-      const reason = document.createElement("div");
-      reason.className = "fp-tooltip-reason";
-      reason.textContent = options.reason;
-      tooltip.appendChild(reason);
-    }
-    if (options.showNext && options.onNext) {
-      const btn = document.createElement("button");
-      btn.className = "fp-tooltip-action";
-      btn.type = "button";
-      btn.textContent = "I have filled it";
-      btn.addEventListener("click", options.onNext, { once: true });
-      tooltip.appendChild(btn);
-    }
-  };
-  const destroy2 = () => {
-    tooltip.remove();
-  };
-  return { update, destroy: destroy2 };
-};
-const STYLE_TEXT = `
-:host { all: initial; }
-* { box-sizing: border-box; font-family: "Noto Sans SC", sans-serif; }
-.fp-highlight {
-  position: fixed;
-  border: 2px solid #f1b256;
-  border-radius: 12px;
-  box-shadow: 0 0 0 6px rgba(241, 178, 86, 0.22);
-  pointer-events: none;
-  z-index: 9999;
-  display: none;
-}
-.fp-mask-piece {
-  position: fixed;
-  background: rgba(12, 18, 28, 0.5);
-  border-radius: 0;
-  pointer-events: none;
-  z-index: 9998;
-  display: none;
-}
-.fp-tooltip {
-  position: fixed;
-  background: #0f1b2b;
-  color: #f7f9fc;
-  padding: 12px 14px;
-  border-radius: 12px;
-  max-width: 280px;
-  font-size: 12px;
-  line-height: 1.5;
-  pointer-events: auto;
-  z-index: 10000;
-  display: none;
-}
-.fp-tooltip-title { font-weight: 600; margin-bottom: 6px; }
-.fp-tooltip-reason { opacity: 0.8; margin-bottom: 8px; }
-.fp-tooltip-action {
-  border: none;
-  background: #f1b256;
-  color: #1b1f23;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-`;
-class GuideRuntime {
-  constructor(root) {
-    this.activeElement = null;
-    this.activeOptions = {};
-    this.onGlobalUpdate = () => {
-      this.refresh();
-    };
-    this.root = root;
-    const style = document.createElement("style");
-    style.textContent = STYLE_TEXT;
-    this.root.appendChild(style);
-    this.style = style;
-    this.highlight = createHighlight(this.root);
-    this.tooltip = createTooltip(this.root);
-    this.highlight.update(null);
-    this.tooltip.update(null, { message: "", reason: "" });
-    if (typeof window !== "undefined") {
-      window.addEventListener("resize", this.onGlobalUpdate);
-      window.addEventListener("scroll", this.onGlobalUpdate, true);
-    }
-    if (typeof document !== "undefined") {
-      document.addEventListener("transitionend", this.onGlobalUpdate, true);
-      document.addEventListener("animationend", this.onGlobalUpdate, true);
-    }
+    this.tooltip.style.top = `${top}px`;
+    this.tooltip.style.left = `${left}px`;
   }
-  render(element, options = {}) {
-    this.activeElement = element;
-    this.activeOptions = {
-      message: options.message || "",
-      reason: options.reason || "",
-      showNext: options.showNext,
-      onNext: options.onNext
-    };
-    this.refresh();
-  }
-  clear() {
-    this.activeElement = null;
-    this.activeOptions = {};
-    this.highlight.update(null);
-    this.tooltip.update(null, { message: "", reason: "" });
-  }
-  destroy() {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("resize", this.onGlobalUpdate);
-      window.removeEventListener("scroll", this.onGlobalUpdate, true);
-    }
-    if (typeof document !== "undefined") {
-      document.removeEventListener("transitionend", this.onGlobalUpdate, true);
-      document.removeEventListener("animationend", this.onGlobalUpdate, true);
-    }
-    this.clear();
-    this.highlight.destroy();
-    this.tooltip.destroy();
-    if (this.style.parentNode) {
-      this.style.parentNode.removeChild(this.style);
-    }
-  }
-  refresh() {
-    if (!this.activeElement || !this.activeElement.isConnected) {
-      this.highlight.update(null);
-      this.tooltip.update(null, { message: "", reason: "" });
-      return;
-    }
-    const rect = this.activeElement.getBoundingClientRect();
-    this.highlight.update(rect);
-    this.tooltip.update(rect, {
-      message: this.activeOptions.message || "",
-      reason: this.activeOptions.reason || "",
-      showNext: this.activeOptions.showNext,
-      onNext: this.activeOptions.onNext
+  hideHighlight() {
+    this.highlight.style.display = "none";
+    this.masks.forEach((piece) => {
+      piece.style.display = "none";
     });
   }
+  hideTooltip() {
+    this.tooltip.style.display = "none";
+    this.tooltipTitle.textContent = "";
+    this.tooltipReason.textContent = "";
+  }
 }
-const normalizeEntry = (entry) => {
-  if (!entry) {
-    return { selector: "", fallback: [], pages: [] };
-  }
-  if (typeof entry === "string") {
-    return { selector: entry, fallback: [], pages: [] };
-  }
-  return {
-    selector: entry.selector || "",
-    fallback: Array.isArray(entry.fallback) ? entry.fallback : [],
-    pages: Array.isArray(entry.pages) ? entry.pages : []
-  };
-};
 class DomAdapter {
-  constructor(root, mapping, getCurrentPage) {
+  constructor(mapping, getCurrentPage) {
     this.mapping = mapping;
     this.getCurrentPageImpl = getCurrentPage;
-    this.ui = new GuideRuntime(root);
+    this.renderer = new GuideRenderer(ensureShadowRoot());
   }
   getCurrentPage() {
     if (this.getCurrentPageImpl) {
@@ -434,77 +436,122 @@ class DomAdapter {
     }
     return "";
   }
-  resolveStepElement(step) {
-    return this.resolveElement(step.highlight);
+  canResolveStep(step, page = this.getCurrentPage()) {
+    return this.validateStepAvailability(step, page).valid;
   }
-  canResolveStep(step) {
-    if (step.type === "route") {
-      return true;
+  validateStepAvailability(step, page = this.getCurrentPage()) {
+    const resolved = this.resolveStep(step, page);
+    if (!resolved.matchedPage) {
+      return { valid: false, reason: "page-mismatch" };
     }
-    const resolved = this.resolveStepElement(step);
-    return Boolean(resolved.element);
+    if (step.type === "route") {
+      if (resolved.element || resolved.pages.length > 0) {
+        return { valid: true, reason: "ok" };
+      }
+      return { valid: false, reason: "element-missing" };
+    }
+    if (!resolved.element) {
+      return { valid: false, reason: "element-missing" };
+    }
+    return { valid: true, reason: "ok" };
+  }
+  matchStepEvent(step, event) {
+    const page = event.meta.page || this.getCurrentPage();
+    const resolved = this.resolveStep(step, page);
+    if (!resolved.matchedPage) {
+      return { valid: false, reason: "page-mismatch" };
+    }
+    if (step.type === "route") {
+      return { valid: true, reason: "ok" };
+    }
+    if (!resolved.element) {
+      return { valid: false, reason: "element-missing" };
+    }
+    if (this.matchesStepElement(step.highlight, resolved.selectors, event.meta.element)) {
+      return { valid: true, reason: "ok" };
+    }
+    return { valid: false, reason: "element-mismatch" };
   }
   renderStep(step) {
-    const resolved = this.resolveStepElement(step);
-    this.ui.render(resolved.element, {
-      message: step.desc || "",
+    const resolved = this.resolveStep(step, this.getCurrentPage());
+    this.renderer.render(resolved.element, {
+      message: step.desc || step.id,
       reason: step.desc || ""
     });
   }
   clear() {
-    this.ui.clear();
+    this.renderer.clear();
   }
   destroy() {
-    this.ui.destroy();
+    this.renderer.destroy();
   }
-  resolveElement(key) {
-    const selectors = this.resolveSelectors(key);
-    const pages = this.resolvePages(key);
-    const currentPage = this.getCurrentPage();
-    if (pages.length && currentPage && !pages.includes(currentPage)) {
-      return { element: null, selectors };
+  resolveStep(step, page) {
+    const selectors = this.resolveSelectors(step.highlight);
+    const pages = this.resolvePages(step);
+    const matchedPage = !pages.length || pages.includes(page);
+    if (!matchedPage || typeof document === "undefined") {
+      return {
+        element: null,
+        selectors,
+        pages,
+        matchedPage
+      };
     }
     for (const selector of selectors) {
       const element = document.querySelector(selector);
       if (element) {
-        return { element, selectors };
+        return {
+          element,
+          selectors,
+          pages,
+          matchedPage
+        };
       }
     }
-    return { element: null, selectors };
+    return {
+      element: null,
+      selectors,
+      pages,
+      matchedPage
+    };
   }
   resolveSelectors(key) {
+    var _a;
     if (!key) {
       return [];
     }
-    const entry = normalizeEntry(this.mapping ? this.mapping[key] : null);
-    const selectors = [];
-    if (entry.selector) {
-      selectors.push(entry.selector);
-    }
-    if (entry.fallback.length) {
-      entry.fallback.forEach((item) => selectors.push(item));
-    }
-    const guideSelector = `[data-guide-id="${key}"]`;
+    const entry = normalizeEntry((_a = this.mapping) == null ? void 0 : _a[key]);
+    const selectors = [entry.selector, ...entry.fallback].filter(Boolean);
+    const guideSelector = `[data-guide-id='${key}']`;
     if (!selectors.includes(guideSelector)) {
       selectors.push(guideSelector);
     }
-    return selectors.filter(Boolean);
+    return selectors;
   }
-  resolvePages(key) {
-    const entry = normalizeEntry(this.mapping ? this.mapping[key] : null);
-    return Array.isArray(entry.pages) ? entry.pages : [];
+  resolvePages(step) {
+    var _a;
+    const entry = normalizeEntry((_a = this.mapping) == null ? void 0 : _a[step.highlight]);
+    if (entry.pages.length > 0) {
+      return entry.pages;
+    }
+    if (step.type === "route" && step.highlight.startsWith("/")) {
+      return [step.highlight];
+    }
+    return [];
+  }
+  matchesStepElement(highlight, selectors, element) {
+    if (!element) {
+      return false;
+    }
+    if (element.guideId && element.guideId === highlight) {
+      return true;
+    }
+    if (element.selector && selectors.includes(element.selector)) {
+      return true;
+    }
+    return false;
   }
 }
-const mountShadowRoot = () => {
-  const existing = document.getElementById("flowpilot-root");
-  if (existing && existing.shadowRoot) {
-    return existing.shadowRoot;
-  }
-  const host = document.createElement("div");
-  host.id = "flowpilot-root";
-  document.body.appendChild(host);
-  return host.attachShadow({ mode: "open" });
-};
 class EventBus {
   constructor() {
     this.listeners = /* @__PURE__ */ new Map();
@@ -560,18 +607,56 @@ class RuntimeLifecycle {
     this.adapter.destroy();
   }
 }
-const validateStepEvent = (step, event) => {
-  var _a;
+const validateStepAvailability = (step, adapter, page = adapter.getCurrentPage()) => {
+  return adapter.validateStepAvailability(step, page);
+};
+const validateStepEvent = (step, event, adapter) => {
   if (event.meta.trigger !== step.type) {
     return { valid: false, reason: "trigger-mismatch" };
   }
-  if ((step.type === "click" || step.type === "form") && step.highlight) {
-    const guideId = (_a = event.meta.element) == null ? void 0 : _a.guideId;
-    if (!guideId || guideId !== step.highlight) {
-      return { valid: false, reason: "element-mismatch" };
+  return adapter.matchStepEvent(step, event);
+};
+const decideRecovery = (workflow, currentIndex, validation) => {
+  if (!workflow.steps.length || currentIndex < 0 || currentIndex >= workflow.steps.length) {
+    return { type: "reset", reason: validation.reason };
+  }
+  if (validation.reason === "page-mismatch" || validation.reason === "element-missing") {
+    return { type: "remap", reason: validation.reason };
+  }
+  if (validation.reason === "trigger-mismatch" || validation.reason === "element-mismatch") {
+    return { type: "retry", reason: validation.reason };
+  }
+  return { type: "reset", reason: validation.reason };
+};
+const reconcileStepIndex = (workflow, currentIndex, strategy, adapter, page = adapter.getCurrentPage()) => {
+  const steps = workflow.steps;
+  if (!steps.length) {
+    return null;
+  }
+  if (strategy.type === "reset") {
+    return findNearestResolvableStep(steps, 0, adapter, page);
+  }
+  if (strategy.type === "retry" && currentIndex >= 0 && currentIndex < steps.length && adapter.canResolveStep(steps[currentIndex], page)) {
+    return currentIndex;
+  }
+  const start2 = Math.max(0, Math.min(currentIndex, steps.length - 1));
+  return findNearestResolvableStep(steps, start2, adapter, page);
+};
+const findNearestResolvableStep = (steps, start2, adapter, page) => {
+  for (let offset = 0; offset < steps.length; offset += 1) {
+    const forward = start2 + offset;
+    if (forward < steps.length && adapter.canResolveStep(steps[forward], page)) {
+      return forward;
+    }
+    if (offset === 0) {
+      continue;
+    }
+    const backward = start2 - offset;
+    if (backward >= 0 && adapter.canResolveStep(steps[backward], page)) {
+      return backward;
     }
   }
-  return { valid: true, reason: "ok" };
+  return null;
 };
 class RuntimeStateStore {
   constructor(initialPage) {
@@ -620,7 +705,6 @@ class RuntimeEngine {
     this.eventBus = options.eventBus;
     this.adapter = options.adapter;
     this.lifecycle = options.lifecycle;
-    this.recovery = options.recovery;
     this.debug = Boolean(options.debug);
     this.state = new RuntimeStateStore(this.adapter.getCurrentPage());
     this.bindAction();
@@ -637,7 +721,7 @@ class RuntimeEngine {
     }
     this.state.start(workflow, this.adapter.getCurrentPage());
     this.log("start", workflow.id);
-    this.activateStep(0);
+    this.transitionTo(0);
   }
   reset() {
     this.state.reset(this.adapter.getCurrentPage());
@@ -658,22 +742,18 @@ class RuntimeEngine {
   }
   handleAction(event) {
     const snapshot = this.state.snapshot;
-    if (snapshot.status !== "running" || !snapshot.workflow || !snapshot.currentStep) {
+    if (snapshot.status !== "running" || !snapshot.workflow || !snapshot.currentStep || typeof snapshot.currentStepIndex !== "number") {
       return;
     }
     this.state.setPage(event.meta.page || this.adapter.getCurrentPage());
-    const validation = validateStepEvent(snapshot.currentStep, event);
+    const validation = validateStepEvent(snapshot.currentStep, event, this.adapter);
     if (validation.valid) {
       this.log("complete", snapshot.currentStep.id, event.name);
       this.advance();
       return;
     }
     this.log("mismatch", validation.reason, event.name);
-    const recovered = this.recovery.recover(
-      snapshot.workflow,
-      snapshot.currentStepIndex ?? 0
-    );
-    this.activateStep(recovered.index);
+    this.recover(snapshot.workflow, snapshot.currentStepIndex, validation);
   }
   advance() {
     const snapshot = this.state.snapshot;
@@ -685,9 +765,9 @@ class RuntimeEngine {
       this.finish();
       return;
     }
-    this.activateStep(nextIndex);
+    this.transitionTo(nextIndex);
   }
-  activateStep(index) {
+  transitionTo(index) {
     const snapshot = this.state.snapshot;
     const workflow = snapshot.workflow;
     if (snapshot.status !== "running" || !workflow) {
@@ -699,6 +779,16 @@ class RuntimeEngine {
     }
     const step = workflow.steps[index];
     this.state.setStep(index, step);
+    const validation = validateStepAvailability(
+      step,
+      this.adapter,
+      snapshot.currentPage || this.adapter.getCurrentPage()
+    );
+    if (!validation.valid) {
+      this.log("activate-mismatch", step.id, validation.reason);
+      this.recover(workflow, index, validation);
+      return;
+    }
     this.lifecycle.enterStep(step);
     this.log("activate", step.id);
   }
@@ -710,40 +800,28 @@ class RuntimeEngine {
   resolveWorkflow(workflowId) {
     return this.workflows.find((item) => item.id === workflowId) || this.workflows[0] || null;
   }
+  recover(workflow, currentIndex, validation) {
+    var _a;
+    const strategy = decideRecovery(workflow, currentIndex, validation);
+    const page = this.state.snapshot.currentPage || this.adapter.getCurrentPage();
+    const nextIndex = reconcileStepIndex(workflow, currentIndex, strategy, this.adapter, page);
+    if (nextIndex === null) {
+      this.lifecycle.clearStep();
+      this.lifecycle.error(new Error(`Recovery failed: ${validation.reason}`));
+      return;
+    }
+    if (nextIndex === currentIndex && this.adapter.canResolveStep(workflow.steps[currentIndex], page)) {
+      this.lifecycle.enterStep(workflow.steps[currentIndex]);
+      this.log("retry", workflow.steps[currentIndex].id, validation.reason);
+      return;
+    }
+    this.log("recover", strategy.type, ((_a = workflow.steps[nextIndex]) == null ? void 0 : _a.id) || nextIndex);
+    this.transitionTo(nextIndex);
+  }
   log(...args) {
     if (this.debug) {
       console.log("[FlowPilot:engine]", ...args);
     }
-  }
-}
-const reconcileStepIndex = (workflow, currentIndex, adapter) => {
-  const steps = workflow.steps;
-  if (!steps.length) {
-    return null;
-  }
-  const start2 = Math.max(0, Math.min(currentIndex, steps.length - 1));
-  for (let offset = 0; offset < steps.length; offset += 1) {
-    const forward = start2 + offset;
-    if (forward < steps.length && adapter.canResolveStep(steps[forward])) {
-      return forward;
-    }
-    const backward = start2 - offset;
-    if (backward >= 0 && adapter.canResolveStep(steps[backward])) {
-      return backward;
-    }
-  }
-  return null;
-};
-class RecoveryManager {
-  constructor(adapter) {
-    this.adapter = adapter;
-  }
-  recover(workflow, currentIndex) {
-    const reconciledIndex = reconcileStepIndex(workflow, currentIndex, this.adapter);
-    if (typeof reconciledIndex === "number") {
-      return { type: "jump", index: reconciledIndex };
-    }
-    return { type: "reset", index: 0 };
   }
 }
 const VERSION = "0.2.0";
@@ -780,8 +858,8 @@ const normalizeActionEvent = (event) => {
     source: metaInput.source || "system",
     trigger: metaInput.trigger || "manual",
     page: typeof metaInput.page === "string" && metaInput.page.length > 0 ? metaInput.page : resolveCurrentPage(),
-    stepId: metaInput.stepId,
-    workflowId: metaInput.workflowId,
+    stepId: typeof metaInput.stepId === "string" && metaInput.stepId.length > 0 ? metaInput.stepId : void 0,
+    workflowId: typeof metaInput.workflowId === "string" && metaInput.workflowId.length > 0 ? metaInput.workflowId : void 0,
     element: metaInput.element ? {
       selector: metaInput.element.selector,
       guideId: metaInput.element.guideId,
@@ -812,20 +890,17 @@ const init = (config) => {
     return;
   }
   const eventBus = new EventBus();
-  const root = mountShadowRoot();
-  const adapter = new DomAdapter(root, config.mapping, config.getCurrentPage);
+  const adapter = new DomAdapter(config.mapping, config.getCurrentPage);
   const lifecycle = new RuntimeLifecycle(adapter, {
     onStepChange: config.onStepChange,
     onFinish: config.onFinish,
     onError: config.onError
   });
-  const recovery = new RecoveryManager(adapter);
   const engine = new RuntimeEngine({
     workflows,
     eventBus,
     adapter,
     lifecycle,
-    recovery,
     debug: config.debug
   });
   const listener = new BehaviorListener(eventBus, {

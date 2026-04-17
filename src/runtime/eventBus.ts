@@ -1,4 +1,4 @@
-import type { ActionEvent } from "../behavior/protocol";
+import type { ActionEvent } from "../core/types";
 
 type EventHandler<T> = (payload: T) => void;
 

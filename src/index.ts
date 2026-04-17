@@ -1,13 +1,15 @@
 import type { InitConfig, Workflow } from "./core/types";
 import { normalizeWorkflows } from "./core/workflow";
 import { BehaviorListener } from "./behavior/listener";
-import type { ActionEvent, ActionEventInput, FlowPilotEventMeta } from "./behavior/protocol";
 import { DomAdapter } from "./adapter/dom";
-import { mountShadowRoot } from "./runtime/shadow";
 import { EventBus } from "./runtime/eventBus";
 import { RuntimeLifecycle } from "./runtime/lifecycle";
 import { RuntimeEngine } from "./runtime/engine";
-import { RecoveryManager } from "./recovery/recovery";
+import type {
+  ActionEvent,
+  ActionEventInput,
+  FlowPilotEventMeta,
+} from "./core/types";
 
 type PluginState = {
   config: InitConfig | null;
@@ -60,8 +62,14 @@ const normalizeActionEvent = (event: ActionEventInput): ActionEvent => {
       typeof metaInput.page === "string" && metaInput.page.length > 0
         ? metaInput.page
         : resolveCurrentPage(),
-    stepId: metaInput.stepId,
-    workflowId: metaInput.workflowId,
+    stepId:
+      typeof metaInput.stepId === "string" && metaInput.stepId.length > 0
+        ? metaInput.stepId
+        : undefined,
+    workflowId:
+      typeof metaInput.workflowId === "string" && metaInput.workflowId.length > 0
+        ? metaInput.workflowId
+        : undefined,
     element: metaInput.element
       ? {
           selector: metaInput.element.selector,
@@ -97,20 +105,17 @@ const init = (config: InitConfig) => {
   }
 
   const eventBus = new EventBus();
-  const root = mountShadowRoot();
-  const adapter = new DomAdapter(root, config.mapping, config.getCurrentPage);
+  const adapter = new DomAdapter(config.mapping, config.getCurrentPage);
   const lifecycle = new RuntimeLifecycle(adapter, {
     onStepChange: config.onStepChange,
     onFinish: config.onFinish,
     onError: config.onError,
   });
-  const recovery = new RecoveryManager(adapter);
   const engine = new RuntimeEngine({
     workflows,
     eventBus,
     adapter,
     lifecycle,
-    recovery,
     debug: config.debug,
   });
   const listener = new BehaviorListener(eventBus, {
@@ -194,4 +199,18 @@ if (typeof window !== "undefined") {
   (window as any).FlowPilot = FlowPilot;
 }
 
+export type {
+  ActionEvent,
+  ActionEventInput,
+  FlowPilotEventElement,
+  FlowPilotEventMeta,
+  FlowPilotEventSource,
+  FlowPilotEventTrigger,
+  InitConfig,
+  MappingEntry,
+  MappingRegistry,
+  Step,
+  StepType,
+  Workflow,
+} from "./core/types";
 export default FlowPilot;

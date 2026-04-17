@@ -1,4 +1,4 @@
-import type { ActionEvent } from "./protocol";
+import type { ActionEvent } from "../core/types";
 import { EventBus } from "../runtime/eventBus";
 
 const getTargetText = (target: Element) => {
@@ -17,6 +17,7 @@ export class BehaviorListener {
   private eventBus: EventBus;
   private getCurrentPage: () => string;
   private detachFns: Array<() => void> = [];
+  private started = false;
 
   constructor(eventBus: EventBus, options: ListenerOptions) {
     this.eventBus = eventBus;
@@ -24,6 +25,11 @@ export class BehaviorListener {
   }
 
   start() {
+    if (this.started) {
+      return;
+    }
+    this.started = true;
+
     if (typeof document !== "undefined") {
       this.bindClick();
       this.bindForm();
@@ -37,6 +43,7 @@ export class BehaviorListener {
   stop() {
     this.detachFns.forEach((dispose) => dispose());
     this.detachFns = [];
+    this.started = false;
   }
 
   private bindClick() {
