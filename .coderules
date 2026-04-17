@@ -1,19 +1,31 @@
-# FlowPilot v1 - Codex Rules (STRICT)
+# FlowPilot v1 - Codex Hard Rules (DO NOT BREAK)
 
-## 1. ARCHITECTURE RULE
+## 1. SYSTEM IDENTITY RULE
 
-Only ONE system is allowed to control flow:
+This project is NOT:
+- AI agent
+- automation bot
+- RPA system
+- browser controller
 
-→ runtime/engine.ts
-
-No other file is allowed to decide:
-- next step
-- flow transition
-- workflow changes
+It is a UI Step State Machine SDK.
 
 ---
 
-## 2. STEP RULE
+## 2. SINGLE SOURCE OF TRUTH RULE
+
+Only ONE module is allowed to control flow:
+
+→ runtime/engine.ts
+
+No other module may:
+- decide next step
+- mutate workflow state
+- trigger transitions
+
+---
+
+## 3. STEP RULE (CRITICAL)
 
 Step is PURE CONFIG ONLY.
 
@@ -27,111 +39,117 @@ FORBIDDEN:
 - state
 - status
 - behavior
-- logic
-- runtime fields
+- runtime logic
+- auto actions
 
 ---
 
-## 3. BEHAVIOR RULE
+## 4. BEHAVIOR RULE
 
 behavior/listener.ts is EVENT ONLY.
 
 Allowed:
-- listen DOM events
-- normalize events
-- emit to EventBus
+- DOM event listening
+- event normalization
+- EventBus emission
 
 FORBIDDEN:
-- deciding next step
-- modifying state
-- triggering transitions
+- step decision
+- validation
+- state mutation
+- DOM-based logic decisions
 
 ---
 
-## 4. ADAPTER RULE
+## 5. ADAPTER RULE (CRITICAL)
 
-adapter is READ + RENDER ONLY.
+Adapter is the ONLY DOM truth layer.
 
 Allowed:
 - DOM query
-- highlight UI
-- render overlay
+- element resolution
+- UI highlight rendering
+- tooltip rendering
 
 FORBIDDEN:
 - click()
 - fill()
 - submit()
 - triggering user actions
+- flow control logic
 
 ---
 
-## 5. RUNTIME RULE
+## 6. RUNTIME RULE
 
 runtime/engine.ts is the ONLY decision maker.
 
 Allowed:
 - step transition
-- event handling
-- recovery triggering
+- event processing
+- recovery trigger
+- state update
 
 FORBIDDEN:
-- DOM operations
+- DOM access
 - UI rendering
+- selector logic
 - business logic
 
 ---
 
-## 6. RECOVERY RULE
+## 7. RECOVERY RULE
 
-Recovery is fallback only.
+Recovery is a correction layer only.
 
 Allowed:
 - detect mismatch
-- fix state
-- reset step
-- reconcile step
+- decide recovery strategy
+- reset or remap step state
+
+FORBIDDEN:
+- DOM querying
+- UI rendering
+- step execution logic
 
 ---
 
-## 7. ANTI-AGENT RULE (CRITICAL)
+## 8. VALIDATION RULE
 
-This project is NOT:
-- an AI agent
-- an automation system
-- a RPA tool
-- a browser controller
+Validation must use Adapter as the ONLY DOM source.
 
-DO NOT introduce:
-- reasoning loops
-- autonomous actions
-- self-deciding flows
+No direct DOM access inside validator or recovery.
 
 ---
 
-## 8. FLOW RULE
+## 9. FLOW RULE (STRICT)
 
-All execution must follow:
+Execution must follow:
 
 User Action
-→ Behavior (event normalize)
+→ Behavior (normalize only)
 → EventBus
 → Runtime Engine (decision)
+→ Validator (via Adapter)
 → Recovery (if needed)
+→ Reconcile
 → Adapter (render only)
 
 ---
 
-## 9. ENGINE RULE
+## 10. ANTI-PATTERN RULE (CRITICAL)
 
-Only runtime/engine.ts can:
-- move to next step
-- change workflow state
-- trigger recovery
+DO NOT introduce:
+- Executors
+- automation scripts
+- AI reasoning loops
+- self-triggered actions
+- hidden flow transitions
 
 ---
 
-## 10. SAFETY RULE
+## 11. ENGINEERING PHILOSOPHY
 
-If uncertain:
-→ DO NOT add logic into behavior or adapter
-→ ALWAYS default to runtime engine responsibility
+"Flow is deterministic, UI is observed, not controlled."
+
+Any deviation from determinism is considered a bug in architecture, not a feature.

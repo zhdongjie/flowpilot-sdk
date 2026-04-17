@@ -3,102 +3,46 @@
     "id": "open_account",
     "steps": [
       {
-        "step": 1,
-        "page": "/home",
+        "id": "step_1",
         "type": "form",
         "highlight": "ui.form_login",
-        "action": "Validate login form",
-        "behavior": {
-          "type": "form",
-          "completion": {
-            "type": "event",
-            "name": "login_form_filled"
-          }
-        }
+        "desc": "Validate login form"
       },
       {
-        "step": 2,
-        "page": "/home",
+        "id": "step_2",
         "type": "form",
         "highlight": "ui.btn_login",
-        "action": "Submit login",
-        "behavior": {
-          "type": "form",
-          "completion": {
-            "type": "event",
-            "name": "login_success"
-          }
-        }
+        "desc": "Submit login"
       },
       {
-        "step": 3,
-        "page": "/home",
+        "id": "step_3",
         "type": "route",
         "highlight": "ui.btn_login",
-        "action": "Navigate to customer center",
-        "behavior": {
-          "type": "route",
-          "completion": {
-            "type": "event",
-            "name": "route_to_customer"
-          }
-        }
+        "desc": "Navigate to customer center"
       },
       {
-        "step": 4,
-        "page": "/customer",
+        "id": "step_4",
         "type": "click",
         "highlight": "ui.menu_open_account",
-        "action": "Click Open Account",
-        "behavior": {
-          "type": "click",
-          "completion": {
-            "type": "event",
-            "name": "menu_open_account_clicked"
-          }
-        }
+        "desc": "Click Open Account"
       },
       {
-        "step": 5,
-        "page": "/customer",
+        "id": "step_5",
         "type": "route",
         "highlight": "ui.menu_open_account",
-        "action": "Navigate to account form page",
-        "behavior": {
-          "type": "route",
-          "completion": {
-            "type": "event",
-            "name": "route_to_customer_create"
-          }
-        }
+        "desc": "Navigate to account form page"
       },
       {
-        "step": 6,
-        "page": "/customer/create",
+        "id": "step_6",
         "type": "form",
         "highlight": "ui.form_open_account",
-        "action": "Validate account opening form",
-        "behavior": {
-          "type": "form",
-          "completion": {
-            "type": "event",
-            "name": "open_account_form_filled"
-          }
-        }
+        "desc": "Validate account opening form"
       },
       {
-        "step": 7,
-        "page": "/customer/create",
+        "id": "step_7",
         "type": "form",
         "highlight": "ui.btn_submit_application",
-        "action": "Submit and wait for successful API response",
-        "behavior": {
-          "type": "form",
-          "completion": {
-            "type": "event",
-            "name": "open_account_submit_success"
-          }
-        }
+        "desc": "Submit and wait for successful API response"
       }
     ]
   },

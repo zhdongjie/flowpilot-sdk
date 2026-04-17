@@ -2,642 +2,192 @@
   typeof exports === "object" && typeof module !== "undefined" ? module.exports = factory() : typeof define === "function" && define.amd ? define(factory) : (global = typeof globalThis !== "undefined" ? globalThis : global || self, global.FlowPilot = factory());
 })(this, function() {
   "use strict";
-  const getPage$1 = () => {
-    if (typeof window === "undefined") {
-      return "";
+  const normalizeType = (value) => {
+    if (value === "click" || value === "form" || value === "route") {
+      return value;
     }
-    return window.location.pathname || "";
+    return "click";
   };
-  const getText = (target) => {
+  const normalizeStep = (raw, index) => {
+    const idCandidate = (raw == null ? void 0 : raw.id) ?? (raw == null ? void 0 : raw.step);
+    const id = typeof idCandidate === "string" ? idCandidate : typeof idCandidate === "number" ? String(idCandidate) : String(index + 1);
+    const typeCandidate = (raw == null ? void 0 : raw.type) ?? (Array.isArray(raw == null ? void 0 : raw.form) && raw.form.length ? "form" : "click");
+    const highlight = typeof (raw == null ? void 0 : raw.highlight) === "string" ? raw.highlight : "";
+    const desc = typeof (raw == null ? void 0 : raw.desc) === "string" ? raw.desc : typeof (raw == null ? void 0 : raw.action) === "string" ? raw.action : void 0;
+    return {
+      id,
+      type: normalizeType(typeCandidate),
+      highlight,
+      desc
+    };
+  };
+  const normalizeWorkflow = (raw) => {
+    if (!raw || typeof raw !== "object") {
+      return null;
+    }
+    const id = typeof raw.id === "string" && raw.id.trim() ? raw.id : "default";
+    const sourceSteps = Array.isArray(raw.steps) ? raw.steps : [];
+    const steps = sourceSteps.map((step, idx) => normalizeStep(step, idx));
+    if (!steps.length) {
+      return null;
+    }
+    return { id, steps };
+  };
+  const normalizeWorkflows = (input) => {
+    const rawList = Array.isArray(input) ? input : [input];
+    const normalized = rawList.map((item) => normalizeWorkflow(item)).filter((item) => Boolean(item));
+    if (normalized.length) {
+      return normalized;
+    }
+    return [];
+  };
+  const getTargetText = (target) => {
     var _a;
-    const raw = ((_a = target.textContent) == null ? void 0 : _a.trim()) || "";
-    if (!raw) {
+    const text = ((_a = target.textContent) == null ? void 0 : _a.trim()) || "";
+    if (!text) {
       return void 0;
     }
-    return raw.length > 120 ? raw.slice(0, 120) : raw;
+    return text.length > 120 ? text.slice(0, 120) : text;
   };
-  const initClickBridge = (eventBus2) => {
-    if (typeof document === "undefined") {
-      return () => {
-      };
-    }
-    const handler = (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const guideNode = target.closest("[data-guide-id]");
-      const guideId = (guideNode == null ? void 0 : guideNode.getAttribute("data-guide-id")) || void 0;
-      const text = getText(target);
-      const element = guideId || text ? {
-        selector: guideId ? `[data-guide-id='${guideId}']` : void 0,
-        guideId,
-        text
-      } : void 0;
-      const actionEvent = {
-        type: "ACTION",
-        name: "sdk_click",
-        meta: {
-          timestamp: Date.now(),
-          source: "sdk",
-          trigger: "click",
-          page: getPage$1(),
-          element
-        }
-      };
-      eventBus2.emit("ACTION", actionEvent);
-    };
-    document.addEventListener("click", handler, true);
-    return () => {
-      document.removeEventListener("click", handler, true);
-    };
-  };
-  const serializeFormData = (form) => {
-    const formData = new FormData(form);
-    const output = {};
-    formData.forEach((value, key) => {
-      if (key in output) {
-        const current = output[key];
-        output[key] = Array.isArray(current) ? [...current, value] : [current, value];
-        return;
-      }
-      output[key] = value;
-    });
-    return output;
-  };
-  const getPage = () => {
-    if (typeof window === "undefined") {
-      return "";
-    }
-    return window.location.pathname || "";
-  };
-  const initFormBridge = (eventBus2) => {
-    if (typeof document === "undefined") {
-      return () => {
-      };
-    }
-    const resolveForm = (target) => {
-      if (!(target instanceof Element)) {
-        return null;
-      }
-      const form = target instanceof HTMLFormElement ? target : target.closest("form");
-      if (!(form instanceof HTMLFormElement)) {
-        return null;
-      }
-      const guideNode = form.closest("[data-guide-id]");
-      const guideId = (guideNode == null ? void 0 : guideNode.getAttribute("data-guide-id")) || void 0;
-      return { form, guideId };
-    };
-    const emitFormEvent = (event) => {
-      const resolved = resolveForm(event.target);
-      if (!resolved) {
-        return;
-      }
-      const { form, guideId } = resolved;
-      const element = guideId ? {
-        selector: `[data-guide-id='${guideId}']`,
-        guideId
-      } : void 0;
-      const actionEvent = {
-        type: "ACTION",
-        name: "sdk_form_submit",
-        meta: {
-          timestamp: Date.now(),
-          source: "sdk",
-          trigger: "form",
-          page: getPage(),
-          element,
-          context: {
-            formData: serializeFormData(form)
-          }
-        }
-      };
-      eventBus2.emit("ACTION", actionEvent);
-    };
-    const onSubmit = (event) => emitFormEvent(event);
-    document.addEventListener("submit", onSubmit, true);
-    return () => {
-      document.removeEventListener("submit", onSubmit, true);
-    };
-  };
-  const buildRouteEvent = () => ({
-    type: "ACTION",
-    name: "sdk_route_change",
-    meta: {
-      timestamp: Date.now(),
-      source: "sdk",
-      trigger: "route",
-      page: window.location.pathname,
-      context: {
-        search: window.location.search,
-        hash: window.location.hash
-      }
-    }
-  });
-  const initRouteBridge = (eventBus2) => {
-    if (typeof window === "undefined") {
-      return () => {
-      };
-    }
-    const emitRouteChange = () => {
-      eventBus2.emit("ACTION", buildRouteEvent());
-    };
-    const onPopState = () => emitRouteChange();
-    const onHashChange = () => emitRouteChange();
-    window.addEventListener("popstate", onPopState);
-    window.addEventListener("hashchange", onHashChange);
-    const originalPushState = history.pushState.bind(history);
-    const originalReplaceState = history.replaceState.bind(history);
-    history.pushState = (...args) => {
-      const result = originalPushState(...args);
-      emitRouteChange();
-      return result;
-    };
-    history.replaceState = (...args) => {
-      const result = originalReplaceState(...args);
-      emitRouteChange();
-      return result;
-    };
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-      window.removeEventListener("hashchange", onHashChange);
-      history.pushState = originalPushState;
-      history.replaceState = originalReplaceState;
-    };
-  };
-  const initBehaviorBridge = (eventBus2) => {
-    const cleanups = [
-      initClickBridge(eventBus2),
-      initFormBridge(eventBus2),
-      initRouteBridge(eventBus2)
-    ];
-    return () => {
-      cleanups.forEach((cleanup) => cleanup());
-    };
-  };
-  class EventBus {
-    constructor() {
-      this.listeners = /* @__PURE__ */ new Map();
-    }
-    on(event, handler) {
-      const set = this.listeners.get(event) ?? /* @__PURE__ */ new Set();
-      set.add(handler);
-      this.listeners.set(event, set);
-      return () => this.off(event, handler);
-    }
-    off(event, handler) {
-      const set = this.listeners.get(event);
-      if (!set) {
-        return;
-      }
-      set.delete(handler);
-      if (set.size === 0) {
-        this.listeners.delete(event);
-      }
-    }
-    emit(event, payload) {
-      const set = this.listeners.get(event);
-      if (!set) {
-        return;
-      }
-      set.forEach((handler) => handler(payload));
-    }
-  }
-  const eventBus = new EventBus();
-  const mountShadowRoot = () => {
-    const existing = document.getElementById("flowpilot-root");
-    if (existing && existing.shadowRoot) {
-      return existing.shadowRoot;
-    }
-    const host = document.createElement("div");
-    host.id = "flowpilot-root";
-    document.body.appendChild(host);
-    return host.attachShadow({ mode: "open" });
-  };
-  class BehaviorEngine {
-    constructor(eventBus2) {
-      this.behaviors = /* @__PURE__ */ new Map();
-      this.activeStepId = null;
-      this.completedSteps = /* @__PURE__ */ new Set();
-      this.detachActionListener = null;
-      this.eventBus = eventBus2;
-      this.bindActionEvent();
-    }
-    register(stepId, behavior, guideId = "") {
-      this.behaviors.set(stepId, {
-        stepId,
-        guideId,
-        behavior
-      });
-    }
-    registerStep(step) {
-      this.register(step.step, this.resolveBehavior(step), step.highlight || "");
-    }
-    activate(stepId) {
-      const step = this.behaviors.get(stepId);
-      if (!step) {
-        this.activeStepId = null;
-        return;
-      }
-      this.activeStepId = stepId;
-    }
-    deactivate() {
-      this.activeStepId = null;
-    }
-    shouldShowConfirm(_stepId) {
-      return false;
-    }
-    reset() {
-      this.deactivate();
-      this.behaviors.clear();
-      this.completedSteps.clear();
-    }
-    destroy() {
-      if (this.detachActionListener) {
-        this.detachActionListener();
-        this.detachActionListener = null;
-      }
-      this.reset();
-    }
-    bindActionEvent() {
-      this.detachActionListener = this.eventBus.on("ACTION", (event) => {
-        const current = this.getCurrentStep();
-        if (!current) {
-          return;
-        }
-        const autoEmit = current.behavior.autoEmit;
-        if (autoEmit && this.shouldAutoEmit(current, event, autoEmit)) {
-          this.eventBus.emit("ACTION", {
-            ...event,
-            name: autoEmit,
-            payload: event.payload ?? event
-          });
-        }
-        if (this.shouldCompleteFromActionEvent(current, event)) {
-          this.complete(current, event);
-        }
-      });
-    }
-    shouldAutoEmit(step, event, autoEmit) {
-      var _a;
-      if (event.name === autoEmit) {
-        return false;
-      }
-      const trigger = event.meta.trigger;
-      if (!this.isBehaviorTrigger(trigger) || trigger !== step.behavior.type) {
-        return false;
-      }
-      if (trigger === "route") {
-        return true;
-      }
-      if (!step.guideId) {
-        return true;
-      }
-      return ((_a = event.meta.element) == null ? void 0 : _a.guideId) === step.guideId;
-    }
-    isBehaviorTrigger(trigger) {
-      return trigger === "click" || trigger === "route" || trigger === "form";
-    }
-    shouldCompleteFromActionEvent(step, event) {
-      const completion = step.behavior.completion;
-      if (!completion || completion.type !== "event") {
-        return false;
-      }
-      const matchesName = typeof completion.name === "string" && completion.name.length > 0 && event.name === completion.name;
-      const matchesEvent = typeof completion.match === "function" && completion.match(event);
-      return matchesName || matchesEvent;
-    }
-    getCurrentStep() {
-      if (this.activeStepId === null) {
-        return null;
-      }
-      const current = this.behaviors.get(this.activeStepId);
-      if (!current) {
-        return null;
-      }
-      if (this.completedSteps.has(current.stepId)) {
-        return null;
-      }
-      return current;
-    }
-    complete(step, event) {
-      if (this.completedSteps.has(step.stepId)) {
-        return;
-      }
-      this.completedSteps.add(step.stepId);
-      this.eventBus.emit("STEP_COMPLETE", {
-        stepId: step.stepId,
-        event
-      });
-    }
-    resolveBehavior(step) {
-      let resolved;
-      if (step.behavior) {
-        resolved = { ...step.behavior };
-      } else if (step.type) {
-        resolved = { type: step.type };
-      } else if (step.form && step.form.length) {
-        resolved = { type: "form" };
-      } else {
-        resolved = { type: "click" };
-      }
-      return this.normalizeBehaviorCompletion(resolved, step.highlight || "");
-    }
-    normalizeBehaviorCompletion(behavior, guideId) {
-      if (behavior.type === "click") {
-        return {
-          ...behavior,
-          completion: this.resolveClickOrRouteCompletion(
-            "click",
-            behavior.completion,
-            guideId
-          )
-        };
-      }
-      if (behavior.type === "route") {
-        return {
-          ...behavior,
-          completion: this.resolveClickOrRouteCompletion("route", behavior.completion)
-        };
-      }
-      return behavior;
-    }
-    resolveClickOrRouteCompletion(source, completion, guideId = "") {
-      if ((completion == null ? void 0 : completion.type) === "event") {
-        return completion;
-      }
-      return {
-        type: "event",
-        match: (event) => {
-          var _a;
-          if (event.meta.trigger !== source) {
-            return false;
-          }
-          if (source !== "click" || !guideId) {
-            return true;
-          }
-          return ((_a = event.meta.element) == null ? void 0 : _a.guideId) === guideId;
-        }
-      };
-    }
-  }
-  class BehaviorLifecycle {
-    constructor(eventBus2, runtime, engine) {
-      this.detach = null;
-      this.eventBus = eventBus2;
-      this.runtime = runtime;
-      this.engine = engine;
+  class BehaviorListener {
+    constructor(eventBus, options) {
+      this.detachFns = [];
+      this.eventBus = eventBus;
+      this.getCurrentPage = options.getCurrentPage;
     }
     start() {
-      if (this.detach) {
-        return;
+      if (typeof document !== "undefined") {
+        this.bindClick();
+        this.bindForm();
       }
-      this.detach = this.eventBus.on(
-        "STEP_COMPLETE",
-        (event) => {
-          this.engine.deactivate();
-          this.runtime.completeStep(event.stepId, event);
-        }
-      );
+      if (typeof window !== "undefined") {
+        this.bindRoute();
+      }
     }
     stop() {
-      if (!this.detach) {
-        return;
-      }
-      this.detach();
-      this.detach = null;
+      this.detachFns.forEach((dispose) => dispose());
+      this.detachFns = [];
     }
-  }
-  const normalizeEntry = (entry) => {
-    if (!entry) {
-      return { selector: "", fallback: [], pages: [] };
+    bindClick() {
+      const onClick = (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const guideNode = target.closest("[data-guide-id]");
+        const guideId = (guideNode == null ? void 0 : guideNode.getAttribute("data-guide-id")) || void 0;
+        const text = getTargetText(target);
+        const element = guideId || text ? {
+          selector: guideId ? `[data-guide-id='${guideId}']` : void 0,
+          guideId,
+          text
+        } : void 0;
+        const actionEvent = {
+          type: "ACTION",
+          name: "sdk_click",
+          meta: {
+            timestamp: Date.now(),
+            source: "sdk",
+            trigger: "click",
+            page: this.getCurrentPage(),
+            element
+          }
+        };
+        this.eventBus.emit("ACTION", actionEvent);
+      };
+      document.addEventListener("click", onClick, true);
+      this.detachFns.push(() => document.removeEventListener("click", onClick, true));
     }
-    if (typeof entry === "string") {
-      return { selector: entry, fallback: [], pages: [] };
+    bindForm() {
+      const serializeFormData = (form) => {
+        const fd = new FormData(form);
+        const output = {};
+        fd.forEach((value, key) => {
+          if (key in output) {
+            const current = output[key];
+            output[key] = Array.isArray(current) ? [...current, value] : [current, value];
+            return;
+          }
+          output[key] = value;
+        });
+        return output;
+      };
+      const onSubmit = (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+        const form = target instanceof HTMLFormElement ? target : target.closest("form");
+        if (!(form instanceof HTMLFormElement)) {
+          return;
+        }
+        const guideNode = form.closest("[data-guide-id]");
+        const guideId = (guideNode == null ? void 0 : guideNode.getAttribute("data-guide-id")) || void 0;
+        const element = guideId ? {
+          selector: `[data-guide-id='${guideId}']`,
+          guideId
+        } : void 0;
+        const actionEvent = {
+          type: "ACTION",
+          name: "sdk_form_submit",
+          meta: {
+            timestamp: Date.now(),
+            source: "sdk",
+            trigger: "form",
+            page: this.getCurrentPage(),
+            element,
+            context: {
+              formData: serializeFormData(form)
+            }
+          }
+        };
+        this.eventBus.emit("ACTION", actionEvent);
+      };
+      document.addEventListener("submit", onSubmit, true);
+      this.detachFns.push(() => document.removeEventListener("submit", onSubmit, true));
     }
-    return {
-      selector: entry.selector || "",
-      fallback: entry.fallback || [],
-      pages: entry.pages || []
-    };
-  };
-  const resolveSelectors = (key, mapping) => {
-    if (!key) {
-      return [];
-    }
-    const entry = normalizeEntry(mapping ? mapping[key] : null);
-    const selectors = [];
-    if (entry.selector) {
-      selectors.push(entry.selector);
-    }
-    if (Array.isArray(entry.fallback)) {
-      entry.fallback.forEach((item) => selectors.push(item));
-    }
-    const dataGuideSelector = `[data-guide-id="${key}"]`;
-    if (!selectors.includes(dataGuideSelector)) {
-      selectors.push(dataGuideSelector);
-    }
-    return selectors.filter(Boolean);
-  };
-  const resolvePages = (key, mapping) => {
-    const entry = normalizeEntry(mapping ? mapping[key] : null);
-    return Array.isArray(entry.pages) ? entry.pages : [];
-  };
-  const resolveElement = (key, mapping, currentPage) => {
-    const selectors = resolveSelectors(key, mapping);
-    const pages = resolvePages(key, mapping);
-    if (pages.length && currentPage && !pages.includes(currentPage)) {
-      return { element: null, selectors };
-    }
-    for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (element) {
-        return { element, selectors };
-      }
-    }
-    return { element: null, selectors };
-  };
-  const stateMatches = (stepState, state2) => {
-    if (!stepState || !state2) {
-      return true;
-    }
-    return Object.keys(stepState).every((key) => state2[key] === stepState[key]);
-  };
-  const normalizePage = (value) => {
-    const hashIndex = value.indexOf("#");
-    const queryIndex = value.indexOf("?");
-    const cutIndex = hashIndex === -1 ? queryIndex : queryIndex === -1 ? hashIndex : Math.min(hashIndex, queryIndex);
-    return cutIndex === -1 ? value : value.slice(0, cutIndex);
-  };
-  const pageMatches = (step, currentPage) => {
-    if (!step.page) {
-      return true;
-    }
-    if (!currentPage) {
-      return false;
-    }
-    if (step.page.includes("#") || step.page.includes("?")) {
-      return step.page === currentPage;
-    }
-    return normalizePage(currentPage) === step.page;
-  };
-  const isStepEligible = (step, context) => {
-    return pageMatches(step, context.currentPage) && stateMatches(step.state, context.state);
-  };
-  const findNextStep = (workflow, currentStepIndex, context) => {
-    const steps = workflow.steps || [];
-    if (!steps.length) {
-      return null;
-    }
-    const startIndex = typeof currentStepIndex === "number" ? currentStepIndex + 1 : 0;
-    for (let idx = startIndex; idx < steps.length; idx += 1) {
-      const candidate = steps[idx];
-      if (isStepEligible(candidate, context)) {
-        return { step: candidate, index: idx };
-      }
-    }
-    return null;
-  };
-  const isValidationFailure = (result) => !result.valid;
-  class StepLifecycle {
-    constructor(ui, mapping, _legacyBehavior) {
-      this.ui = ui;
-      this.mapping = mapping;
-    }
-    validate(step, context) {
-      if (!pageMatches(step, context.currentPage)) {
-        return { valid: false, reason: "page-mismatch" };
-      }
-      if (!stateMatches(step.state, context.state)) {
-        return { valid: false, reason: "state-mismatch" };
-      }
-      const mappingPages = resolvePages(step.highlight, this.mapping);
-      if (mappingPages.length && context.currentPage && !mappingPages.includes(context.currentPage)) {
-        return { valid: false, reason: "page-mismatch" };
-      }
-      const { element, selectors } = resolveElement(
-        step.highlight,
-        this.mapping,
-        context.currentPage
-      );
-      if (!element) {
-        return { valid: false, reason: "element-missing", selectors };
-      }
-      return { valid: true, element, selectors };
-    }
-    enter(step, element, options) {
-      this.exit();
-      this.ui.render(element, {
-        message: step.action || "",
-        reason: step.desc || "",
-        showNext: options == null ? void 0 : options.showNext,
-        onNext: options == null ? void 0 : options.onNext
+    bindRoute() {
+      const emitRoute = () => {
+        const actionEvent = {
+          type: "ACTION",
+          name: "sdk_route_change",
+          meta: {
+            timestamp: Date.now(),
+            source: "sdk",
+            trigger: "route",
+            page: this.getCurrentPage(),
+            context: {
+              search: typeof window !== "undefined" ? window.location.search : "",
+              hash: typeof window !== "undefined" ? window.location.hash : ""
+            }
+          }
+        };
+        this.eventBus.emit("ACTION", actionEvent);
+      };
+      const onPopState = () => emitRoute();
+      const onHashChange = () => emitRoute();
+      window.addEventListener("popstate", onPopState);
+      window.addEventListener("hashchange", onHashChange);
+      const originalPushState = history.pushState.bind(history);
+      const originalReplaceState = history.replaceState.bind(history);
+      history.pushState = (...args) => {
+        const result = originalPushState(...args);
+        emitRoute();
+        return result;
+      };
+      history.replaceState = (...args) => {
+        const result = originalReplaceState(...args);
+        emitRoute();
+        return result;
+      };
+      this.detachFns.push(() => {
+        window.removeEventListener("popstate", onPopState);
+        window.removeEventListener("hashchange", onHashChange);
+        history.pushState = originalPushState;
+        history.replaceState = originalReplaceState;
       });
     }
-    exit() {
-      this.ui.clear();
-    }
-    destroy() {
-      this.exit();
-      this.ui.destroy();
-    }
   }
-  class RuntimeStateMachine {
-    constructor(initialPage) {
-      this.state = {
-        activeTaskId: null,
-        currentStepIndex: null,
-        currentStep: null,
-        status: "idle",
-        currentPage: initialPage
-      };
-    }
-    get snapshot() {
-      return { ...this.state };
-    }
-    getState() {
-      return this.state;
-    }
-    start(taskId, page) {
-      this.state.activeTaskId = taskId;
-      this.state.status = "running";
-      this.state.currentPage = page;
-      this.state.currentStepIndex = null;
-      this.state.currentStep = null;
-    }
-    setStep(step, index) {
-      this.state.currentStep = step;
-      this.state.currentStepIndex = index;
-    }
-    clearStep(keepIndex = false) {
-      this.state.currentStep = null;
-      if (!keepIndex) {
-        this.state.currentStepIndex = null;
-      }
-    }
-    finish() {
-      this.state.status = "finished";
-    }
-    reset(page) {
-      this.state.activeTaskId = null;
-      this.state.status = "idle";
-      this.state.currentPage = page;
-      this.state.currentStepIndex = null;
-      this.state.currentStep = null;
-    }
-    updatePage(page) {
-      this.state.currentPage = page;
-    }
-  }
-  const backfillCompletion = (steps = [], currentIndex) => {
-    if (!steps.length) {
-      return;
-    }
-    const activeIndex = typeof currentIndex === "number" ? currentIndex : -1;
-    steps.forEach((step, index) => {
-      if (index < activeIndex) {
-        step.status = "completed";
-      } else if (index === activeIndex) {
-        step.status = "active";
-      } else {
-        step.status = step.status === "completed" ? "completed" : "pending";
-      }
-    });
-  };
-  const reconcileStep = (workflow, page, state2 = {}) => {
-    if (!workflow) {
-      return null;
-    }
-    const steps = workflow.steps || [];
-    if (!steps.length) {
-      return null;
-    }
-    const candidates = [];
-    for (let idx = 0; idx < steps.length; idx += 1) {
-      const step = steps[idx];
-      if (!pageMatches(step, page)) {
-        continue;
-      }
-      if (!stateMatches(step.state, state2)) {
-        continue;
-      }
-      candidates.push({ step, index: idx });
-    }
-    if (!candidates.length) {
-      return null;
-    }
-    const active = candidates.find((item) => item.step.status === "active");
-    if (active) {
-      return active;
-    }
-    const pending = candidates.find(
-      (item) => !item.step.status || item.step.status === "pending"
-    );
-    if (pending) {
-      return pending;
-    }
-    return candidates[candidates.length - 1];
-  };
   const createHighlight = (root) => {
     const highlight = document.createElement("div");
     highlight.className = "fp-highlight";
@@ -860,364 +410,362 @@
       });
     }
   }
-  class PageWatcher {
-    constructor(options) {
-      this.started = false;
-      this.patched = false;
-      this.handleNavigation = () => {
-        this.checkPage(true);
-      };
-      this.getCurrentPage = options.getCurrentPage;
-      this.onChange = options.onChange;
-      this.lastPage = this.getCurrentPage();
+  const normalizeEntry = (entry) => {
+    if (!entry) {
+      return { selector: "", fallback: [], pages: [] };
     }
-    start() {
-      if (typeof window === "undefined" || this.started) {
-        return;
-      }
-      this.started = true;
-      this.lastPage = this.getCurrentPage();
-      window.addEventListener("popstate", this.handleNavigation);
-      window.addEventListener("hashchange", this.handleNavigation);
-      this.patchHistory();
+    if (typeof entry === "string") {
+      return { selector: entry, fallback: [], pages: [] };
     }
-    stop() {
-      if (typeof window === "undefined" || !this.started) {
-        return;
-      }
-      this.started = false;
-      window.removeEventListener("popstate", this.handleNavigation);
-      window.removeEventListener("hashchange", this.handleNavigation);
-      this.restoreHistory();
+    return {
+      selector: entry.selector || "",
+      fallback: Array.isArray(entry.fallback) ? entry.fallback : [],
+      pages: Array.isArray(entry.pages) ? entry.pages : []
+    };
+  };
+  class DomAdapter {
+    constructor(root, mapping, getCurrentPage) {
+      this.mapping = mapping;
+      this.getCurrentPageImpl = getCurrentPage;
+      this.ui = new GuideRuntime(root);
     }
-    checkPage(force = false) {
-      const current = this.getCurrentPage();
-      if (force || current !== this.lastPage) {
-        this.lastPage = current;
-        this.onChange(current);
-      }
-    }
-    patchHistory() {
-      if (this.patched || typeof window === "undefined") {
-        return;
-      }
-      this.originalPushState = history.pushState.bind(history);
-      this.originalReplaceState = history.replaceState.bind(history);
-      history.pushState = (...args) => {
-        var _a;
-        const result = (_a = this.originalPushState) == null ? void 0 : _a.call(this, ...args);
-        this.checkPage();
-        return result;
-      };
-      history.replaceState = (...args) => {
-        var _a;
-        const result = (_a = this.originalReplaceState) == null ? void 0 : _a.call(this, ...args);
-        this.checkPage();
-        return result;
-      };
-      this.patched = true;
-    }
-    restoreHistory() {
-      if (!this.patched || typeof window === "undefined") {
-        return;
-      }
-      if (this.originalPushState) {
-        history.pushState = this.originalPushState;
-      }
-      if (this.originalReplaceState) {
-        history.replaceState = this.originalReplaceState;
-      }
-      this.patched = false;
-    }
-  }
-  const createRuntimeAdapter = (config) => {
-    const getCurrentPage = () => {
-      if (config.getCurrentPage) {
-        return config.getCurrentPage() || "";
+    getCurrentPage() {
+      if (this.getCurrentPageImpl) {
+        return this.getCurrentPageImpl() || "";
       }
       if (typeof window !== "undefined") {
         return window.location.pathname || "";
       }
       return "";
-    };
-    return { getCurrentPage };
-  };
-  class FlowPilotRuntime {
-    constructor(config, root, eventBus2) {
-      this.activeWorkflow = null;
-      this.lastInvalidKey = null;
-      this.elementRetryTimer = null;
-      this.elementRetryAttempts = 0;
-      this.elementRetryStepId = null;
-      this.config = config;
-      this.adapter = createRuntimeAdapter(config);
-      this.ui = new GuideRuntime(root);
-      this.lifecycle = new StepLifecycle(this.ui, config.mapping);
-      this.stateMachine = new RuntimeStateMachine(this.adapter.getCurrentPage());
-      this.eventBus = eventBus2 ?? new EventBus();
-      this.behaviorEngine = new BehaviorEngine(this.eventBus);
-      this.behaviorLifecycle = new BehaviorLifecycle(
-        this.eventBus,
-        this,
-        this.behaviorEngine
-      );
-      this.behaviorLifecycle.start();
-      this.watcher = new PageWatcher({
-        getCurrentPage: () => this.adapter.getCurrentPage(),
-        onChange: (page) => {
-          this.onPageChange(page);
-        }
+    }
+    resolveStepElement(step) {
+      return this.resolveElement(step.highlight);
+    }
+    canResolveStep(step) {
+      if (step.type === "route") {
+        return true;
+      }
+      const resolved = this.resolveStepElement(step);
+      return Boolean(resolved.element);
+    }
+    renderStep(step) {
+      const resolved = this.resolveStepElement(step);
+      this.ui.render(resolved.element, {
+        message: step.desc || "",
+        reason: step.desc || ""
       });
     }
-    start(taskId) {
-      const workflow = this.getWorkflow(taskId);
-      if (!workflow) {
-        this.handleError(new Error("Workflow not found"));
-        return;
-      }
-      if (!workflow.steps || workflow.steps.length === 0) {
-        this.handleError(new Error("Workflow has no steps"));
-        return;
-      }
-      this.behaviorEngine.reset();
-      workflow.steps.forEach((step) => {
-        step.status = "pending";
-        this.behaviorEngine.registerStep(step);
-      });
-      this.lifecycle.exit();
-      this.lastInvalidKey = null;
-      this.activeWorkflow = workflow;
-      const currentPage = this.adapter.getCurrentPage();
-      this.stateMachine.start(taskId, currentPage);
-      this.watcher.start();
-      this.onPageChange(currentPage);
-    }
-    reset() {
-      this.clearElementRetry();
-      this.lifecycle.exit();
-      this.behaviorEngine.reset();
-      this.watcher.stop();
-      this.activeWorkflow = null;
-      this.lastInvalidKey = null;
-      this.stateMachine.reset(this.adapter.getCurrentPage());
+    clear() {
+      this.ui.clear();
     }
     destroy() {
-      this.reset();
-      this.behaviorLifecycle.stop();
-      this.behaviorEngine.destroy();
-      this.lifecycle.destroy();
+      this.ui.destroy();
     }
-    completeStep(stepId, stepComplete) {
-      const state2 = this.stateMachine.getState();
-      if (!this.activeWorkflow || state2.status !== "running" || !state2.currentStep) {
-        return;
+    resolveElement(key) {
+      const selectors = this.resolveSelectors(key);
+      const pages = this.resolvePages(key);
+      const currentPage = this.getCurrentPage();
+      if (pages.length && currentPage && !pages.includes(currentPage)) {
+        return { element: null, selectors };
       }
-      if (state2.currentStep.step !== stepId || state2.currentStep.status === "completed") {
-        return;
-      }
-      const actionEvent = stepComplete == null ? void 0 : stepComplete.event;
-      if (actionEvent && actionEvent.meta.trigger === "route" && typeof actionEvent.meta.page === "string") {
-        this.stateMachine.updatePage(actionEvent.meta.page);
-      }
-      this.clearElementRetry();
-      state2.currentStep.status = "completed";
-      this.lifecycle.exit();
-      const next = findNextStep(this.activeWorkflow, state2.currentStepIndex, {
-        currentPage: state2.currentPage,
-        state: this.getState()
-      });
-      if (!next) {
-        const hasRemainingSteps = typeof state2.currentStepIndex === "number" && this.activeWorkflow.steps.length > state2.currentStepIndex + 1;
-        if (hasRemainingSteps) {
-          this.stateMachine.clearStep(true);
-          return;
-        }
-        this.onFlowFinish();
-        return;
-      }
-      this.onStepChange(next.step, next.index);
-    }
-    onPageChange(page) {
-      this.stateMachine.updatePage(page);
-      const state2 = this.stateMachine.getState();
-      if (!this.activeWorkflow || state2.status !== "running") {
-        this.stateMachine.clearStep(true);
-        this.lifecycle.exit();
-        this.behaviorEngine.deactivate();
-        return;
-      }
-      if (state2.currentStep && typeof state2.currentStepIndex === "number") {
-        const stillEligible = isStepEligible(state2.currentStep, {
-          currentPage: page,
-          state: this.getState()
-        });
-        if (stillEligible) {
-          this.onStepChange(state2.currentStep, state2.currentStepIndex);
-          return;
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          return { element, selectors };
         }
       }
-      const candidate = reconcileStep(this.activeWorkflow, page, this.getState());
-      if (!candidate) {
-        this.stateMachine.clearStep(true);
-        this.lifecycle.exit();
-        this.behaviorEngine.deactivate();
-        return;
-      }
-      this.onStepChange(candidate.step, candidate.index);
+      return { element: null, selectors };
     }
-    onStepChange(step, index) {
-      var _a, _b, _c, _d;
-      if (!step || typeof index !== "number") {
-        this.clearElementRetry();
-        this.lifecycle.exit();
-        this.behaviorEngine.deactivate();
-        this.stateMachine.clearStep(true);
-        return;
+    resolveSelectors(key) {
+      if (!key) {
+        return [];
       }
-      const state2 = this.stateMachine.getState();
-      const isSameStep = ((_a = state2.currentStep) == null ? void 0 : _a.step) === step.step && state2.currentStepIndex === index;
-      if (!isSameStep) {
-        this.stateMachine.setStep(step, index);
-        if ((_b = this.activeWorkflow) == null ? void 0 : _b.steps) {
-          backfillCompletion(this.activeWorkflow.steps, index);
-        }
-        (_d = (_c = this.config).onStepChange) == null ? void 0 : _d.call(_c, step);
-        this.logDebug("step change", step);
+      const entry = normalizeEntry(this.mapping ? this.mapping[key] : null);
+      const selectors = [];
+      if (entry.selector) {
+        selectors.push(entry.selector);
       }
-      const validation = this.lifecycle.validate(step, {
-        currentPage: this.stateMachine.getState().currentPage,
-        state: this.getState()
-      });
-      if (isValidationFailure(validation)) {
-        if (validation.reason === "element-missing") {
-          this.reportInvalidOnce(step.step, validation.reason, {
-            selectors: validation.selectors
-          });
-          this.scheduleElementRetry(step, index);
-        } else if (validation.reason !== "page-mismatch") {
-          this.reportInvalidOnce(step.step, validation.reason);
-          this.clearElementRetry();
-        } else {
-          this.clearElementRetry();
-        }
-        this.lifecycle.exit();
-        return;
+      if (entry.fallback.length) {
+        entry.fallback.forEach((item) => selectors.push(item));
       }
-      this.clearElementRetry();
-      this.lastInvalidKey = null;
-      this.lifecycle.enter(step, validation.element);
-      this.behaviorEngine.activate(step.step);
+      const guideSelector = `[data-guide-id="${key}"]`;
+      if (!selectors.includes(guideSelector)) {
+        selectors.push(guideSelector);
+      }
+      return selectors.filter(Boolean);
     }
-    onFlowFinish() {
+    resolvePages(key) {
+      const entry = normalizeEntry(this.mapping ? this.mapping[key] : null);
+      return Array.isArray(entry.pages) ? entry.pages : [];
+    }
+  }
+  const mountShadowRoot = () => {
+    const existing = document.getElementById("flowpilot-root");
+    if (existing && existing.shadowRoot) {
+      return existing.shadowRoot;
+    }
+    const host = document.createElement("div");
+    host.id = "flowpilot-root";
+    document.body.appendChild(host);
+    return host.attachShadow({ mode: "open" });
+  };
+  class EventBus {
+    constructor() {
+      this.listeners = /* @__PURE__ */ new Map();
+    }
+    on(event, handler) {
+      const set = this.listeners.get(event) ?? /* @__PURE__ */ new Set();
+      set.add(handler);
+      this.listeners.set(event, set);
+      return () => this.off(event, handler);
+    }
+    off(event, handler) {
+      const set = this.listeners.get(event);
+      if (!set) {
+        return;
+      }
+      set.delete(handler);
+      if (set.size === 0) {
+        this.listeners.delete(event);
+      }
+    }
+    emit(event, payload) {
+      const set = this.listeners.get(event);
+      if (!set) {
+        return;
+      }
+      set.forEach((handler) => handler(payload));
+    }
+  }
+  class RuntimeLifecycle {
+    constructor(adapter, hooks) {
+      this.adapter = adapter;
+      this.hooks = hooks;
+    }
+    enterStep(step) {
       var _a, _b;
-      this.lifecycle.exit();
-      this.behaviorEngine.deactivate();
-      this.stateMachine.finish();
-      this.stateMachine.clearStep(true);
-      (_b = (_a = this.config).onFinish) == null ? void 0 : _b.call(_a);
+      this.adapter.renderStep(step);
+      (_b = (_a = this.hooks).onStepChange) == null ? void 0 : _b.call(_a, step);
     }
-    reportInvalidOnce(stepNumber, reason, detail) {
-      var _a;
-      const key = `${stepNumber}:${reason}`;
-      if (this.lastInvalidKey === key) {
-        return;
-      }
-      this.lastInvalidKey = key;
-      if (reason === "element-missing" && ((_a = detail == null ? void 0 : detail.selectors) == null ? void 0 : _a.length)) {
-        this.handleError(
-          new Error(
-            `Element not found. Tried selectors: ${detail.selectors.join(", ")}`
-          )
-        );
-        return;
-      }
-      if (reason === "state-mismatch") {
-        this.handleError(new Error("Step state does not match current state"));
-      }
+    clearStep() {
+      this.adapter.clear();
     }
-    getWorkflow(taskId) {
-      const workflows = Array.isArray(this.config.workflow) ? this.config.workflow : [this.config.workflow];
-      if (taskId) {
-        return workflows.find((item) => item.id === taskId) || workflows[0] || null;
-      }
-      return workflows[0] || null;
+    finish() {
+      var _a, _b;
+      this.adapter.clear();
+      (_b = (_a = this.hooks).onFinish) == null ? void 0 : _b.call(_a);
     }
-    getState() {
-      if (this.config.getState) {
-        return this.config.getState() || {};
-      }
-      return {};
-    }
-    logDebug(...args) {
-      if (this.config.debug) {
-        console.log("[FlowPilot]", ...args);
-      }
-    }
-    handleError(error) {
+    error(error) {
       var _a, _b;
       console.error("[FlowPilot]", error);
-      (_b = (_a = this.config).onError) == null ? void 0 : _b.call(_a, error);
+      (_b = (_a = this.hooks).onError) == null ? void 0 : _b.call(_a, error);
     }
-    clearElementRetry() {
-      if (this.elementRetryTimer !== null) {
-        if (typeof window !== "undefined") {
-          window.clearTimeout(this.elementRetryTimer);
-        } else {
-          clearTimeout(this.elementRetryTimer);
-        }
-        this.elementRetryTimer = null;
+    destroy() {
+      this.adapter.destroy();
+    }
+  }
+  const validateStepEvent = (step, event) => {
+    var _a;
+    if (event.meta.trigger !== step.type) {
+      return { valid: false, reason: "trigger-mismatch" };
+    }
+    if ((step.type === "click" || step.type === "form") && step.highlight) {
+      const guideId = (_a = event.meta.element) == null ? void 0 : _a.guideId;
+      if (!guideId || guideId !== step.highlight) {
+        return { valid: false, reason: "element-mismatch" };
       }
-      this.elementRetryAttempts = 0;
-      this.elementRetryStepId = null;
     }
-    scheduleElementRetry(step, index) {
-      if (typeof window === "undefined") {
+    return { valid: true, reason: "ok" };
+  };
+  class RuntimeStateStore {
+    constructor(initialPage) {
+      this.state = {
+        status: "idle",
+        workflow: null,
+        currentStepIndex: null,
+        currentStep: null,
+        currentPage: initialPage
+      };
+    }
+    get snapshot() {
+      return { ...this.state };
+    }
+    setPage(page) {
+      this.state.currentPage = page;
+    }
+    start(workflow, page) {
+      this.state.status = "running";
+      this.state.workflow = workflow;
+      this.state.currentPage = page;
+      this.state.currentStepIndex = null;
+      this.state.currentStep = null;
+    }
+    setStep(index, step) {
+      this.state.currentStepIndex = index;
+      this.state.currentStep = step;
+    }
+    finish() {
+      this.state.status = "finished";
+      this.state.currentStep = null;
+      this.state.currentStepIndex = null;
+    }
+    reset(page) {
+      this.state.status = "idle";
+      this.state.workflow = null;
+      this.state.currentStepIndex = null;
+      this.state.currentStep = null;
+      this.state.currentPage = page;
+    }
+  }
+  class RuntimeEngine {
+    constructor(options) {
+      this.detachAction = null;
+      this.workflows = options.workflows;
+      this.eventBus = options.eventBus;
+      this.adapter = options.adapter;
+      this.lifecycle = options.lifecycle;
+      this.recovery = options.recovery;
+      this.debug = Boolean(options.debug);
+      this.state = new RuntimeStateStore(this.adapter.getCurrentPage());
+      this.bindAction();
+    }
+    start(workflowId) {
+      const workflow = this.resolveWorkflow(workflowId);
+      if (!workflow) {
+        this.lifecycle.error(new Error("Workflow not found"));
         return;
       }
-      if (this.elementRetryStepId !== step.step) {
-        this.elementRetryStepId = step.step;
-        this.elementRetryAttempts = 0;
-      }
-      if (this.elementRetryAttempts >= 20 || this.elementRetryTimer !== null) {
+      if (!workflow.steps.length) {
+        this.lifecycle.error(new Error("Workflow has no steps"));
         return;
       }
-      this.elementRetryAttempts += 1;
-      this.elementRetryTimer = window.setTimeout(() => {
-        this.elementRetryTimer = null;
-        const state2 = this.stateMachine.getState();
-        if (!this.activeWorkflow || state2.status !== "running") {
-          return;
-        }
-        if (!state2.currentStep || typeof state2.currentStepIndex !== "number") {
-          return;
-        }
-        if (state2.currentStep.step !== step.step || state2.currentStepIndex !== index) {
-          return;
-        }
-        this.onStepChange(state2.currentStep, state2.currentStepIndex);
-      }, 80);
+      this.state.start(workflow, this.adapter.getCurrentPage());
+      this.log("start", workflow.id);
+      this.activateStep(0);
+    }
+    reset() {
+      this.state.reset(this.adapter.getCurrentPage());
+      this.lifecycle.clearStep();
+    }
+    destroy() {
+      if (this.detachAction) {
+        this.detachAction();
+        this.detachAction = null;
+      }
+      this.reset();
+      this.lifecycle.destroy();
+    }
+    bindAction() {
+      this.detachAction = this.eventBus.on("ACTION", (event) => {
+        this.handleAction(event);
+      });
+    }
+    handleAction(event) {
+      const snapshot = this.state.snapshot;
+      if (snapshot.status !== "running" || !snapshot.workflow || !snapshot.currentStep) {
+        return;
+      }
+      this.state.setPage(event.meta.page || this.adapter.getCurrentPage());
+      const validation = validateStepEvent(snapshot.currentStep, event);
+      if (validation.valid) {
+        this.log("complete", snapshot.currentStep.id, event.name);
+        this.advance();
+        return;
+      }
+      this.log("mismatch", validation.reason, event.name);
+      const recovered = this.recovery.recover(
+        snapshot.workflow,
+        snapshot.currentStepIndex ?? 0
+      );
+      this.activateStep(recovered.index);
+    }
+    advance() {
+      const snapshot = this.state.snapshot;
+      if (!snapshot.workflow || typeof snapshot.currentStepIndex !== "number") {
+        return;
+      }
+      const nextIndex = snapshot.currentStepIndex + 1;
+      if (nextIndex >= snapshot.workflow.steps.length) {
+        this.finish();
+        return;
+      }
+      this.activateStep(nextIndex);
+    }
+    activateStep(index) {
+      const snapshot = this.state.snapshot;
+      const workflow = snapshot.workflow;
+      if (snapshot.status !== "running" || !workflow) {
+        return;
+      }
+      if (index < 0 || index >= workflow.steps.length) {
+        this.finish();
+        return;
+      }
+      const step = workflow.steps[index];
+      this.state.setStep(index, step);
+      this.lifecycle.enterStep(step);
+      this.log("activate", step.id);
+    }
+    finish() {
+      this.state.finish();
+      this.lifecycle.finish();
+      this.log("finish");
+    }
+    resolveWorkflow(workflowId) {
+      return this.workflows.find((item) => item.id === workflowId) || this.workflows[0] || null;
+    }
+    log(...args) {
+      if (this.debug) {
+        console.log("[FlowPilot:engine]", ...args);
+      }
+    }
+  }
+  const reconcileStepIndex = (workflow, currentIndex, adapter) => {
+    const steps = workflow.steps;
+    if (!steps.length) {
+      return null;
+    }
+    const start2 = Math.max(0, Math.min(currentIndex, steps.length - 1));
+    for (let offset = 0; offset < steps.length; offset += 1) {
+      const forward = start2 + offset;
+      if (forward < steps.length && adapter.canResolveStep(steps[forward])) {
+        return forward;
+      }
+      const backward = start2 - offset;
+      if (backward >= 0 && adapter.canResolveStep(steps[backward])) {
+        return backward;
+      }
+    }
+    return null;
+  };
+  class RecoveryManager {
+    constructor(adapter) {
+      this.adapter = adapter;
+    }
+    recover(workflow, currentIndex) {
+      const reconciledIndex = reconcileStepIndex(workflow, currentIndex, this.adapter);
+      if (typeof reconciledIndex === "number") {
+        return { type: "jump", index: reconciledIndex };
+      }
+      return { type: "reset", index: 0 };
     }
   }
   const VERSION = "0.2.0";
   const GLOBAL_INIT_FLAG = "__FLOWPILOT__";
   const state = {
     config: null,
-    runtime: null,
-    disposeBehaviorBridge: null,
+    workflows: [],
+    eventBus: null,
+    adapter: null,
+    listener: null,
+    engine: null,
     initialized: false
-  };
-  const logDebug = (...args) => {
-    var _a;
-    if ((_a = state.config) == null ? void 0 : _a.debug) {
-      console.log("[FlowPilot]", ...args);
-    }
-  };
-  const getWorkflow = (config, taskId) => {
-    const workflows = Array.isArray(config.workflow) ? config.workflow : [config.workflow];
-    return workflows[0] || null;
   };
   const resolveCurrentPage = () => {
     var _a;
+    if (state.adapter) {
+      return state.adapter.getCurrentPage();
+    }
     if ((_a = state.config) == null ? void 0 : _a.getCurrentPage) {
       return state.config.getCurrentPage() || "";
     }
@@ -1262,49 +810,72 @@
       console.warn("[FlowPilot] init has already been called.");
       return;
     }
-    state.config = config;
-    const shadowRoot = mountShadowRoot();
-    state.runtime = new FlowPilotRuntime(config, shadowRoot, eventBus);
-    state.disposeBehaviorBridge = initBehaviorBridge(eventBus);
-    state.initialized = true;
-    window[GLOBAL_INIT_FLAG] = true;
-    if (state.config.debug) {
-      logDebug("init", config);
+    const workflows = normalizeWorkflows(config.workflow);
+    if (!workflows.length) {
+      (_a = config.onError) == null ? void 0 : _a.call(config, new Error("Workflow not found"));
+      return;
     }
-    if (state.config.autoStart) {
-      const workflow = getWorkflow(config);
-      if (workflow) {
-        start(workflow.id);
-      } else {
-        (_a = config.onError) == null ? void 0 : _a.call(config, new Error("Workflow not found for autoStart"));
+    const eventBus = new EventBus();
+    const root = mountShadowRoot();
+    const adapter = new DomAdapter(root, config.mapping, config.getCurrentPage);
+    const lifecycle = new RuntimeLifecycle(adapter, {
+      onStepChange: config.onStepChange,
+      onFinish: config.onFinish,
+      onError: config.onError
+    });
+    const recovery = new RecoveryManager(adapter);
+    const engine = new RuntimeEngine({
+      workflows,
+      eventBus,
+      adapter,
+      lifecycle,
+      recovery,
+      debug: config.debug
+    });
+    const listener = new BehaviorListener(eventBus, {
+      getCurrentPage: () => adapter.getCurrentPage()
+    });
+    listener.start();
+    state.config = config;
+    state.workflows = workflows;
+    state.eventBus = eventBus;
+    state.adapter = adapter;
+    state.listener = listener;
+    state.engine = engine;
+    state.initialized = true;
+    if (typeof window !== "undefined") {
+      window[GLOBAL_INIT_FLAG] = true;
+    }
+    if (config.autoStart) {
+      const firstWorkflow = workflows[0];
+      if (firstWorkflow) {
+        engine.start(firstWorkflow.id);
       }
     }
   };
-  const start = (intent) => {
-    if (!state.runtime) {
-      return;
-    }
-    state.runtime.start(intent);
+  const start = (taskId) => {
+    var _a;
+    (_a = state.engine) == null ? void 0 : _a.start(taskId);
   };
   const emit = (event) => {
-    var _a, _b;
+    var _a, _b, _c;
     try {
       const normalized = normalizeActionEvent(event);
-      eventBus.emit("ACTION", normalized);
+      (_a = state.eventBus) == null ? void 0 : _a.emit("ACTION", normalized);
     } catch (error) {
       const normalizedError = error instanceof Error ? error : new Error("FlowPilot.emit failed");
-      (_b = (_a = state.config) == null ? void 0 : _a.onError) == null ? void 0 : _b.call(_a, normalizedError);
+      (_c = (_b = state.config) == null ? void 0 : _b.onError) == null ? void 0 : _c.call(_b, normalizedError);
       throw normalizedError;
     }
   };
   const reset = () => {
     var _a;
-    (_a = state.runtime) == null ? void 0 : _a.reset();
+    (_a = state.engine) == null ? void 0 : _a.reset();
   };
   const destroy = () => {
     var _a, _b;
-    (_a = state.runtime) == null ? void 0 : _a.destroy();
-    (_b = state.disposeBehaviorBridge) == null ? void 0 : _b.call(state);
+    (_a = state.listener) == null ? void 0 : _a.stop();
+    (_b = state.engine) == null ? void 0 : _b.destroy();
     const host = document.getElementById("flowpilot-root");
     if (host && host.parentNode) {
       host.parentNode.removeChild(host);
@@ -1313,8 +884,11 @@
       delete window[GLOBAL_INIT_FLAG];
     }
     state.config = null;
-    state.runtime = null;
-    state.disposeBehaviorBridge = null;
+    state.workflows = [];
+    state.eventBus = null;
+    state.adapter = null;
+    state.listener = null;
+    state.engine = null;
     state.initialized = false;
   };
   const FlowPilot = {

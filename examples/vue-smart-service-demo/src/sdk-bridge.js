@@ -51,18 +51,37 @@ export const startFlowPilot = (taskId = "open_account") => {
   return true;
 };
 
-export const emitFlowPilotAction = (name, payload) => {
+/**
+ * 触发 SDK 动作
+ * @param {string} name 动作名称
+ * @param {any} payload 业务数据
+ * @param {string} stepType 当前步骤的触发类型 ('click' | 'form' | 'route')，默认 'click'
+ * @param {string} guideId 目标元素的高亮 ID（如果需要校验元素），默认空
+ */
+export const emitFlowPilotAction = (name, payload, stepType = "click", guideId = "") => {
   const FlowPilot = getFlowPilot();
   if (!FlowPilot || typeof FlowPilot.emit !== "function") {
     console.warn("[FlowPilot Demo] SDK emit is not available.");
     return false;
   }
 
-  FlowPilot.emit({
+  // 组装 V1 架构所需的数据结构
+  const eventPayload = {
     type: "ACTION",
     name,
     payload,
-  });
+    // 补全 meta 信息以通过 V1 架构的 validator 校验
+    meta: {
+      timestamp: Date.now(),
+      source: "business_logic",
+      trigger: stepType,
+      page: typeof window !== "undefined" ? window.location.pathname : "",
+      element: guideId ? { guideId } : undefined,
+      context: payload
+    }
+  };
+
+  FlowPilot.emit(eventPayload);
   return true;
 };
 

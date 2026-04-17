@@ -1,42 +1,49 @@
-# FlowPilot v1 - Implementation Plan
+# FlowPilot v1 - Final Implementation Plan
 
-## 1. Project Goal
+## 1. Project Definition
 
-FlowPilot v1 is a deterministic event-driven UI Step State Machine SDK.
+FlowPilot v1 is a deterministic, event-driven UI Step State Machine SDK.
 
-It helps guide users through web workflows by:
+It guides users through web workflows by:
 - Highlighting UI elements
-- Tracking user actions
-- Advancing step-by-step workflows
-- Recovering from mismatches
+- Listening to user actions
+- Advancing steps deterministically
+- Recovering from UI mismatches
 
-NOT an automation tool, NOT an agent system.
+It is NOT:
+- An AI agent system
+- A browser automation tool
+- A RPA execution engine
 
 ---
 
-## 2. System Architecture
+## 2. Core Architecture
 
-### Core Principle
-
-Only ONE runtime engine controls all flow transitions.
+### System Flow (MANDATORY)
 
 ```
+
 User Action
 ↓
-Behavior Listener (event normalization only)
+Behavior Layer (event normalization ONLY)
 ↓
 EventBus
 ↓
-Runtime Engine (single decision maker)
+Runtime Engine (SINGLE source of truth)
 ↓
-Recovery Layer (optional fallback)
+Validator (uses Adapter)
 ↓
-Adapter Layer (read + render only)
+Recovery Engine (if mismatch)
+↓
+Reconcile Engine (state repair)
+↓
+Adapter (UI render ONLY)
+
 ````
 
 ---
 
-## 3. Folder Structure (MANDATORY)
+## 3. Folder Structure (STRICT)
 
 src/
   core/
@@ -45,7 +52,7 @@ src/
     types.ts
 
   runtime/
-    engine.ts        # ONLY entry point
+    engine.ts        # ONLY decision maker
     state.ts
     eventBus.ts
     lifecycle.ts
@@ -54,7 +61,7 @@ src/
     listener.ts      # event normalization ONLY
 
   adapter/
-    dom.ts           # read + render ONLY
+    dom.ts           # DOM truth + UI render ONLY
 
   recovery/
     validator.ts
@@ -63,9 +70,9 @@ src/
 
 ---
 
-## 4. Step Model (STRICT)
+## 4. Step Model (PURE CONFIG ONLY)
 
-Step is PURE CONFIG ONLY.
+Step MUST be immutable configuration.
 
 ```ts
 type Step = {
@@ -76,30 +83,30 @@ type Step = {
 };
 ````
 
-### Forbidden in Step:
+### FORBIDDEN in Step:
 
 * state
 * status
 * behavior
-* autoNext
 * runtime logic
+* auto execution
 
 ---
 
 ## 5. Runtime Engine (CORE RULE)
 
-engine.ts is the ONLY decision maker.
+runtime/engine.ts is the ONLY decision center.
 
 Responsibilities:
 
-* Receive events
-* Evaluate current step
-* Transition to next step
-* Trigger recovery if mismatch
+* Handle events
+* Validate step progress
+* Trigger recovery
+* Advance steps
 
-Forbidden:
+FORBIDDEN:
 
-* DOM operations
+* DOM access
 * UI rendering
 * selector logic
 * business logic
@@ -108,86 +115,108 @@ Forbidden:
 
 ## 6. Behavior Layer
 
-Behavior layer is ONLY responsible for:
+Behavior layer is ONLY an event translator.
 
-* Listening DOM events
-* Normalizing events
-* Emitting events to EventBus
+Responsibilities:
 
-It MUST NOT:
+* Listen DOM events
+* Normalize events
+* Emit to EventBus
 
-* change state
-* decide next step
-* trigger navigation
+FORBIDDEN:
+
+* Step transition logic
+* Validation
+* State mutation
+* DOM decision logic
 
 ---
 
-## 7. Adapter Layer
+## 7. Adapter Layer (CRITICAL)
 
-Adapter is READ + RENDER ONLY.
+Adapter is the ONLY source of DOM truth.
 
-Allowed:
+Responsibilities:
 
-* query DOM
-* highlight elements
-* render overlay UI
+* Query DOM elements
+* Resolve step → element mapping
+* Render highlight / tooltip
+* Provide match utilities
 
-Forbidden:
+FORBIDDEN:
 
 * click()
 * fill()
 * submit()
-* triggering actions
+* triggering user actions
+* flow control logic
 
 ---
 
 ## 8. Recovery System
 
-Recovery handles mismatch between expected step and real UI state.
+Recovery handles mismatch between expected and actual UI state.
 
 Modules:
 
-* validator.ts → check correctness
-* recovery.ts → fix or reset
-* reconcile.ts → find nearest valid step
+* validator.ts → checks correctness using Adapter
+* recovery.ts → decides recovery strategy
+* reconcile.ts → repairs runtime state
+
+Rules:
+
+* NO DOM querying logic inside recovery
+* NO UI rendering inside recovery
+* ONLY decision + state correction
 
 ---
 
-## 9. MVP Scope (v1 ONLY)
+## 9. Execution Flow
+
+1. User interacts with UI
+2. Behavior captures event
+3. EventBus forwards event
+4. Runtime engine processes event
+5. Validator checks using Adapter
+6. If mismatch → Recovery triggers
+7. Reconcile fixes state
+8. Adapter updates UI overlay
+9. Runtime advances step
+
+---
+
+## 10. MVP Scope (STRICT)
 
 Supported:
 
-* linear workflows
+* Linear workflows
 * click steps
 * form steps
 * route steps
-* basic recovery
+* basic recovery (retry / reset / remap)
 
 NOT supported:
 
 * DAG workflows
-* AI agents
-* auto execution
-* dynamic step generation
-
----
-
-## 10. Execution Flow
-
-1. User interacts with UI
-2. Behavior listener captures event
-3. EventBus forwards event
-4. Runtime engine decides transition
-5. Recovery runs if needed
-6. Adapter updates UI overlay
-7. Next step activated
+* AI agent reasoning
+* autonomous execution
+* dynamic workflow generation
+* parallel steps
 
 ---
 
 ## 11. Success Criteria
 
-* Flow executes step-by-step deterministically
-* User performs all actions manually
-* No automatic DOM manipulation exists
-* Recovery handles mismatches gracefully
-* System remains predictable and debuggable
+* Fully deterministic step execution
+* No automatic DOM manipulation
+* All transitions controlled by runtime
+* Recovery handles UI mismatch gracefully
+* System remains debuggable and predictable
+
+---
+
+## 12. Engineering Principle
+
+"UI is observed, not controlled."
+
+FlowPilot observes user behavior and guides, but never executes actions on behalf of the user.
